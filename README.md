@@ -212,6 +212,40 @@ Batch reset behavior:
 - Requires elevated role + confirmation.
 - Write audit trail with actor, time, scope, and reason.
 
+## Wix Synchronization for Check In by Wix Mobile App
+
+This section explains how to configure database synchronization with Wix so your local HID scanner workflow and the Check In by Wix mobile app can run in parallel.
+
+### Configuration Steps
+
+1. Enable Wix synchronization:
+	- Open the Event Configuration screen in the admin UI.
+	- Find the Wix Synchronization toggle and set it to enabled.
+	- Save the configuration so scheduled synchronization starts.
+
+2. Set synchronization frequency:
+	- Configure the sync interval in the same Event Configuration area.
+	- Recommended interval: 1 to 2 minutes for near real-time consistency.
+	- Use 1 minute for high-traffic events and 2 minutes for lower traffic.
+
+3. Enable parallel scanner operation:
+	- Keep local HID scanner check-in enabled in the operator UI.
+	- Confirm the event is also accessible in the Check In by Wix mobile app.
+	- Verify both flows write to and read from Wix as shared source-of-truth for check-in state.
+
+### Operational Notes
+
+- Active internet connectivity is required for synchronization between this system and Wix.
+- The Check In by Wix app must be installed on a mobile device and linked to the correct Wix account.
+- After synchronization, check-in updates are reflected in both systems, enabling concurrent scanning from desktop HID stations and mobile devices.
+
+### Reliability Recommendations for Sync Mode
+
+- Keep idempotency and duplicate-prevention checks active locally even when sync is enabled.
+- During temporary outages, queue local check-ins and sync them on reconnect.
+- Run a periodic reconciliation job (for example every 5 to 15 minutes) to resolve drift between local state and Wix.
+- Alert operators when sync lag exceeds a defined threshold (for example 3 minutes).
+
 ## Metrics Dashboard
 
 Provide near real-time operational metrics:
@@ -304,6 +338,7 @@ Tasks:
 - Bootstrap FastAPI and React projects.
 - Implement HID scan capture and QR parsing pipeline.
 - Integrate Wix check-in endpoint.
+- Implement initial Wix pull/push synchronization service to keep local check-in state aligned with Wix.
 - Add Redis-backed pending queue and processed-ticket set.
 - Implement basic idempotency + duplicate prevention.
 - Add baseline logging, health checks, and error handling.
@@ -311,6 +346,7 @@ Tasks:
 Deliverables:
 
 - Working check-in endpoint.
+- Basic Wix synchronization running on a fixed schedule.
 - Offline queue with retry worker.
 - Operator UI showing scan outcomes.
 
@@ -322,6 +358,7 @@ Tasks:
 
 - Build event/block admin screens.
 - Persist and cache configurations in Redis.
+- Add Event Configuration controls for Wix Synchronization enable/disable and sync interval (recommended 1 to 2 minutes).
 - Implement grace period and block assignment rules.
 - Implement event/block reset with audit logging.
 - Harden validation and conflict handling.
@@ -329,6 +366,7 @@ Tasks:
 Deliverables:
 
 - Configurable event operations.
+- Admin-managed Wix synchronization settings and validation.
 - Safe reset tools with auditable actions.
 
 ### Phase 3: Metrics and Monitoring
@@ -340,6 +378,7 @@ Tasks:
 - Build dashboard for key operational metrics.
 - Implement metrics aggregation endpoints.
 - Add queue depth/sync lag/error analytics.
+- Add synchronization health metrics for Wix parity (last successful sync time, drift count, and reconciliation results).
 - Add alerting hooks for degraded service states.
 
 Deliverables:
