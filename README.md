@@ -38,6 +38,32 @@ Core goals:
 - External integration: Wix Events API
 - Optional worker: Python background worker process (can be in same service initially)
 
+## Wix MCP Workspace Setup (VS Code)
+
+This workspace includes a preconfigured MCP server entry for Wix in [`.vscode/mcp.json`](.vscode/mcp.json).
+
+Configured server:
+
+- `wix-mcp-remote` -> `https://mcp.wix.com/mcp`
+
+### How to Enable It
+
+1. Open this workspace in VS Code.
+2. Ensure Node.js 19.9.0+ is installed on your machine.
+3. Open Command Palette and run `MCP: List Servers`.
+4. Select `wix-mcp-remote` and start it.
+5. Approve the trust prompt when VS Code asks to trust the MCP server.
+
+### Validation
+
+1. Open Chat in Agent mode.
+2. Ask a Wix-specific prompt (for example: "List available Wix MCP tools" or "Search Wix Events API docs for ticket check-in").
+3. Confirm MCP tool invocations appear in chat.
+
+### Optional Authenticated Setup
+
+If your workflow requires account-scoped operations, configure headers (`Authorization` and `wix-account-id`) in [`.vscode/mcp.json`](.vscode/mcp.json) using VS Code MCP input variables or environment-based secrets. Do not commit plain API keys.
+
 ## High-Level Architecture
 
 1. Scanner input is captured in the React app via a focused input listener.
