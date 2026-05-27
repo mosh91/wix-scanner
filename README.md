@@ -75,6 +75,94 @@ If your workflow requires account-scoped operations, configure headers (`Authori
 7. A sync worker retries pending queue items with backoff and idempotency safeguards.
 8. Metrics are updated in Redis and exposed to dashboard endpoints.
 
+## Architecture Diagram (Operational View)
+
+```mermaid
+flowchart LR
+		subgraph LocalVenue[Local Venue Network]
+				Scanner[USB 2D Scanner HID]
+				Station[Check-in Station Browser React]
+				Mobile[Check In by Wix Mobile App]
+				Scanner --> Station
+		end
+
+		subgraph Cloud[Cloud Railway]
+				API[FastAPI Backend Railway]
+				Worker[Sync Worker Railway]
+				Redis[(Redis Queue and Cache)]
+				DB[(Primary DB Encrypted Secrets and Audit)]
+				API <--> Redis
+				Worker <--> Redis
+				API <--> DB
+		end
+
+		subgraph WixPlatform[Wix Platform]
+				WixEvents[Wix Events API]
+				WixAuth[Wix Auth Tokens and API Key Context]
+		end
+
+		Station -->|Scan Payload HTTPS| API
+		API -->|Check-in Ticket| WixEvents
+		API -->|Auth and Token Use| WixAuth
+		API -->|Offline Enqueue| Redis
+		Worker -->|Retry Pending Check-ins| WixEvents
+		Mobile -->|Parallel Check-ins| WixEvents
+		WixEvents -->|State Reconciliation| API
+```
+
+## Deployment Topology (Railway + Local Venue)
+
+### Do you need a local computer in the venue network?
+
+Short answer: yes, for scanning stations, but not for hosting the backend.
+
+- You need at least one local computer or tablet at each check-in point to run the browser UI and receive HID scanner input.
+- You do not need to host FastAPI locally if backend and worker run in Railway.
+- The local station must have stable internet access to reach Railway and Wix.
+- If internet is unstable, local scanning can still continue because backend queues check-ins in Redis and syncs later.
+
+### What runs where
+
+- Local venue:
+	- USB scanner (HID keyboard mode)
+	- Browser with React operator app
+	- Optional kiosk mode device for reliability
+- Cloud Railway:
+	- FastAPI API service
+	- Background sync worker
+	- Redis
+	- Primary DB for encrypted credentials and audit logs
+- Wix cloud:
+	- Ticket check-in source of truth
+	- Mobile app check-in path in parallel
+
+## Recommended Architecture for Your Goal
+
+If your main objective is high reliability with minimal local maintenance, the current direction is good with one improvement: add an optional local edge relay for degraded internet sites.
+
+### Recommended baseline (most teams)
+
+- Keep backend, worker, Redis, and DB in cloud (Railway).
+- Use browser-based local stations for scanner input.
+- Keep Wix as source of truth for final check-in state.
+- Keep strong idempotency and reconciliation.
+
+This is usually best when venues have acceptable internet and you want simpler operations.
+
+### Recommended enhanced option (for unstable venues)
+
+- Add a lightweight local edge relay service in the venue.
+- Relay accepts scans on LAN, buffers locally if WAN fails, then forwards to cloud when internet returns.
+- Cloud remains authoritative for business logic, auditing, and reconciliation.
+
+Use this option if internet outages are frequent or long and you cannot risk station-level interruptions.
+
+### Decision guide
+
+- Choose cloud baseline if outage risk is low to moderate.
+- Choose edge relay architecture if outage risk is high or check-in volume is very high.
+- In both options, continue supporting parallel operation with Check In by Wix app and periodic drift reconciliation.
+
 ## Component Design
 
 ### 1) Frontend (React)
@@ -550,3 +638,7 @@ Start with Phase 1 by implementing a vertical slice:
 - Scan capture in React -> FastAPI `/api/checkins/scan` -> Redis dedupe -> Wix check-in -> response toast.
 
 Then add offline queueing and sync worker as the next increment.
+
+## Detailed Delivery Backlog
+
+For implementation-ready user stories with tasks and acceptance criteria, see [docs/IMPLEMENTATION_STORIES.md](docs/IMPLEMENTATION_STORIES.md).
