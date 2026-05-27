@@ -85,6 +85,7 @@ Responsibilities:
 - Maintain focus-safe scan input mode for operator screens.
 - Display immediate result states: success, duplicate, invalid, offline queued, error.
 - Provide admin pages for event/block configuration.
+- Provide credential management screens for Wix access tokens and API keys.
 - Show metrics dashboard and synchronization status.
 
 Implementation notes:
@@ -92,6 +93,20 @@ Implementation notes:
 - Use a hidden, always-focused input and key buffering with short debounce (for scanner burst input).
 - Detect end-of-scan with terminator key (typically Enter) configurable per scanner model.
 - Add audible/visual feedback with latency target under 250 ms for local response.
+
+Required admin screens:
+
+- Authentication Settings screen:
+	- Configure Wix authentication mode (OAuth access token or API key mode).
+	- Show token status (active, expires at, last refresh).
+	- Trigger manual token refresh and connectivity test.
+- API Key Management screen:
+	- Enter/update Wix API key and account ID through masked secure inputs.
+	- Validate credentials before save.
+	- Display last rotation timestamp and last validation result.
+- Secret Rotation and Audit screen:
+	- Rotate credentials with confirmation.
+	- Show audit log (actor, time, action, success/failure).
 
 ### 2) Backend API (FastAPI)
 
@@ -102,6 +117,7 @@ Responsibilities:
 - Enforce idempotent check-in and duplicate prevention.
 - Communicate with Wix APIs and handle retries/backoff.
 - Write/read Redis for queueing, cache, dedupe sets, and metrics.
+- Manage secure storage, retrieval, rotation, and refresh of Wix credentials.
 
 Suggested endpoint surface:
 
@@ -113,6 +129,19 @@ Suggested endpoint surface:
 - `POST /api/events/{eventId}/reset`: clear check-ins (audited).
 - `GET /api/metrics/summary`: aggregate totals.
 - `GET /api/health`: health/readiness.
+- `GET /api/auth/status`: return credential and token health (without exposing secrets).
+- `POST /api/auth/test-connection`: validate current Wix credentials.
+- `PUT /api/auth/api-key`: securely update Wix API key/account ID.
+- `POST /api/auth/token/refresh`: refresh OAuth access token.
+- `GET /api/auth/audit`: retrieve credential change audit history.
+
+Credential storage model (secure DB):
+
+- Store secrets encrypted at rest in the primary database (not in Redis).
+- Use envelope encryption with a KMS-managed master key when available.
+- Persist only encrypted values plus metadata (createdAt, rotatedAt, expiresAt, createdBy).
+- Never return raw secret values from read APIs.
+- Keep Redis limited to non-secret operational cache and queue data.
 
 ### 3) Redis (Caching + Queue + Real-Time State)
 
@@ -320,11 +349,20 @@ Latency targets (suggested):
 ## Security Recommendations
 
 - Store Wix credentials in environment variables or a secrets manager.
+- If credentials must be persisted in DB, store only encrypted secrets with strict RBAC and audit trails.
 - Enforce RBAC for admin features (config/reset/manual override).
 - Use signed JWT/OAuth for frontend-authenticated actions.
 - Apply TLS in transit for all external/internal traffic.
 - Sanitize and validate all scanner input (length, format, character set).
 - Add audit logs for sensitive operations.
+
+Credential security controls:
+
+- Secret write/read operations restricted to privileged admin roles.
+- Full audit logging for create/update/rotate/test operations.
+- Automatic secret rotation reminders and optional forced rotation policy.
+- Token refresh job with expiry threshold (for example refresh when less than 10 minutes remain).
+- Redact secrets in logs, traces, and error payloads.
 
 ## Proposed Repository Structure
 
@@ -367,6 +405,7 @@ Tasks:
 - Implement initial Wix pull/push synchronization service to keep local check-in state aligned with Wix.
 - Add Redis-backed pending queue and processed-ticket set.
 - Implement basic idempotency + duplicate prevention.
+- Implement secure backend credential abstraction (provider interface for env/secrets manager/DB-encrypted storage).
 - Add baseline logging, health checks, and error handling.
 
 Deliverables:
@@ -375,6 +414,7 @@ Deliverables:
 - Basic Wix synchronization running on a fixed schedule.
 - Offline queue with retry worker.
 - Operator UI showing scan outcomes.
+- Initial credential provider integrated with Wix API client (no plaintext secret exposure).
 
 ### Phase 2: Event Configuration and Management
 
@@ -385,6 +425,8 @@ Tasks:
 - Build event/block admin screens.
 - Persist and cache configurations in Redis.
 - Add Event Configuration controls for Wix Synchronization enable/disable and sync interval (recommended 1 to 2 minutes).
+- Build Authentication Settings and API Key Management screens.
+- Implement encrypted credential persistence in DB and validation workflow.
 - Implement grace period and block assignment rules.
 - Implement event/block reset with audit logging.
 - Harden validation and conflict handling.
@@ -393,6 +435,7 @@ Deliverables:
 
 - Configurable event operations.
 - Admin-managed Wix synchronization settings and validation.
+- Admin credential management UI with secure DB-backed secret storage.
 - Safe reset tools with auditable actions.
 
 ### Phase 3: Metrics and Monitoring
@@ -405,12 +448,14 @@ Tasks:
 - Implement metrics aggregation endpoints.
 - Add queue depth/sync lag/error analytics.
 - Add synchronization health metrics for Wix parity (last successful sync time, drift count, and reconciliation results).
+- Add auth observability metrics (token expiry horizon, refresh success rate, credential validation failures).
 - Add alerting hooks for degraded service states.
 
 Deliverables:
 
 - Real-time dashboard.
 - Basic observability with actionable alerts.
+- Credential and token health monitoring with alert thresholds.
 
 ### Phase 4: Optimization, Security, and Deployment
 
@@ -420,6 +465,7 @@ Tasks:
 
 - Optimize Redis key design and memory usage.
 - Add full authn/authz and permission boundaries.
+- Implement production secret rotation runbook and optional KMS-backed encryption migration.
 - Expand test coverage (unit/integration/e2e/load/failure tests).
 - Add CI/CD, deployment manifests, and runbooks.
 - Conduct resilience drills and fix edge cases.
@@ -428,6 +474,17 @@ Deliverables:
 
 - Production-ready deployment package.
 - Security-reviewed and performance-validated release.
+- Audited and policy-compliant credential lifecycle management.
+
+## UI Screen Map (Including Auth and Credentials)
+
+- Operator Check-In screen: scanner input, status feedback, manual retry.
+- Event and Block Configuration screen: event rules, blocks, grace periods, reset tools.
+- Wix Synchronization screen: enable/disable sync, interval, last sync status.
+- Authentication Settings screen: auth mode, token status, refresh/test controls.
+- API Key Management screen: secure API key/account ID update and validation.
+- Metrics and Health Dashboard: operational metrics, sync lag, token/auth health, alerts.
+- Audit Log screen: sensitive action history for credentials and reset operations.
 
 ## Testing Strategy
 
