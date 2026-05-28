@@ -24,6 +24,7 @@ CREATE TYPE relay_status AS ENUM ('enabled', 'disabled', 'degraded');
 CREATE TYPE run_status AS ENUM ('running', 'completed', 'failed');
 CREATE TYPE scanner_health AS ENUM ('connected', 'disconnected', 'unresponsive', 'unknown');
 CREATE TYPE backend_health AS ENUM ('green', 'yellow', 'red');
+CREATE TYPE ticket_manifest_state AS ENUM ('active', 'checked_in', 'cancelled', 'void', 'stale');
 CREATE TYPE credential_audit_action AS ENUM ('create', 'update', 'rotate', 'test', 'refresh', 'read_denied');
 CREATE TYPE action_outcome AS ENUM ('success', 'failure');
 
@@ -85,6 +86,25 @@ CREATE TABLE event_config_version (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT event_config_version_unique UNIQUE (event_id, version_number)
 );
+
+CREATE TABLE event_ticket_manifest (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+  ticket_number TEXT NOT NULL,
+  wix_ticket_id TEXT,
+  ticket_holder_hash TEXT,
+  manifest_state ticket_manifest_state NOT NULL DEFAULT 'active',
+  last_synced_at TIMESTAMPTZ,
+  source_revision TEXT,
+  last_seen_scan_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT event_ticket_manifest_unique_event_ticket UNIQUE (event_id, ticket_number),
+  CONSTRAINT event_ticket_manifest_ticket_not_blank_chk CHECK (length(trim(ticket_number)) > 0)
+);
+
+CREATE INDEX idx_event_ticket_manifest_event_state ON event_ticket_manifest (event_id, manifest_state);
+CREATE INDEX idx_event_ticket_manifest_event_updated_at ON event_ticket_manifest (event_id, updated_at DESC);
 
 -- ===== Scanner sessions and scan events =====
 CREATE TABLE scan_session (

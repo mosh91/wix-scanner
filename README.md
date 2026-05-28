@@ -33,7 +33,10 @@ Core goals:
 ## Technology Stack
 
 - Backend API: Python + FastAPI
-- Frontend: React
+- Frontend: React + Vite
+- UI components: shadcn/ui
+- Styling: Tailwind CSS
+- Toast notifications: Sonner
 - Cache / Queue / Fast state: Redis
 - Primary relational DB: PostgreSQL
 - External integration: Wix Events API
@@ -175,6 +178,48 @@ Short answer: yes, for scanning stations, but not for hosting the backend.
 	- Ticket check-in source of truth
 	- Mobile app check-in path in parallel
 
+## Kiosk Login And Event Scoping
+
+The kiosk should not use a normal human desktop login flow. It should boot straight into a locked operator landing page and wait for a scan.
+
+Recommended startup flow:
+
+1. Debian auto-boots the kiosk account and launches the browser in full-screen kiosk mode.
+2. The React app opens to a landing page with a focused hidden input and a clear "ready to scan" state.
+3. If no event is active, the first QR is treated as a station bootstrap QR, not an attendee ticket.
+4. That bootstrap QR binds the kiosk session to one event and one station context.
+5. After the event is selected, all subsequent scans are treated as attendee tickets for that event until the kiosk is reset, timed out, or re-bootstrapped.
+
+Use cases for the bootstrap QR:
+
+- Event assignment for a given station.
+- Operator/session authorization for a shift.
+- Quick recovery after reboot without typing credentials.
+
+Do not use the attendee ticket QR as the login method. The attendee QR should only identify the ticket to be checked in after the kiosk is already in scan mode.
+
+### Event Scope Handling
+
+Each kiosk session should carry:
+
+- `activeEventId`
+- `activeStationId`
+- `bootstrapSessionId`
+- `operatorId` when a staff identity is known
+
+If the scanned bootstrap QR belongs to a different event than the active one, the app should either reject it or require an explicit admin override. That keeps one station from accidentally processing the wrong event.
+
+### Offline Ticket Coverage
+
+The current implementation plan should include a local event ticket manifest, not just a check-in ledger.
+
+- The app needs a cached list of tickets for the active event so it can validate known ticket numbers when Wix is unavailable.
+- The local store should keep ticket state, last known Wix sync time, and a reconciliation marker per ticket.
+- When offline, scans should still be accepted or rejected against the cached manifest and local dedupe state.
+- When connectivity returns, the worker should reconcile local state back to Wix.
+
+This does not replace Wix as source of truth. It gives the kiosk enough local context to keep operating when Wix is slow or temporarily down.
+
 ## Recommended Architecture for Your Goal
 
 If your main objective is high reliability with minimal local maintenance, the current direction is good with one improvement: add an optional local edge relay for degraded internet sites.
@@ -217,9 +262,46 @@ Responsibilities:
 
 Implementation notes:
 
-- Use a hidden, always-focused input and key buffering with short debounce (for scanner burst input).
-- Detect end-of-scan with terminator key (typically Enter) configurable per scanner model.
+- Use a global `keydown` event listener on `window` instead of a hidden focused input. HID scanners operate in keyboard emulation mode: they type the QR payload at high speed and send `Enter` at the end. A global hook captures all keystrokes regardless of where focus is, making the kiosk immune to accidental focus loss.
+- Buffer incoming characters and flush on `Enter` (configurable terminator). Apply a short debounce (e.g. 50 ms) to coalesce the burst.
+- Validate payload length and character set before dispatching to the backend.
+- Use Sonner `toast` for transient operator feedback that does not block the screen.
 - Add audible/visual feedback with latency target under 250 ms for local response.
+
+### Kiosk Operator Screen — 3-State Full-Screen UI
+
+The main check-in screen must cover the entire viewport and cycle through three states. Text sizes must be `text-5xl` or larger so they are readable at one metre distance. Use shadcn `Card` for any framed content areas.
+
+**1. Idle state (waiting for scan)**
+
+- Dark or deep-blue background.
+- Subtle `animate-pulse` animation on the scan icon or ring.
+- Primary message (Spanish default): `"Por favor, acerque su código QR o Ticket al escáner"`.
+- Small status bar at the bottom showing scanner connection, backend health, and active event.
+
+**2. Success state**
+
+- Full-screen emerald green background (`bg-emerald-500`).
+- Giant `CheckCircle` icon centered.
+- Text: `"¡ACCESO CONCEDIDO!"` in bold uppercase at `text-7xl` or larger.
+- Auto-returns to Idle after 2.5 seconds.
+- Optionally show ticket number or attendee name at smaller size below the main message.
+
+**3. Error / rejection state**
+
+- Full-screen rose red background (`bg-rose-600`).
+- Giant alert icon centered.
+- Text: `"TICKET INVÁLIDO o YA PROCESADO"` in bold uppercase at `text-7xl` or larger.
+- Show a specific rejection reason at smaller size (e.g. duplicate, outside window, unknown ticket).
+- Auto-returns to Idle after 3 seconds or on next scan.
+
+State transitions:
+
+```
+Idle → (scan received) → pending API call → Success or Error → (timer) → Idle
+```
+
+Do not show a loading spinner between scan and response if latency is under 300 ms. If the API call takes longer, show a brief neutral "processing" overlay rather than blocking the screen.
 
 Required admin screens:
 
@@ -245,6 +327,7 @@ Responsibilities:
 - Communicate with Wix APIs and handle retries/backoff.
 - Write/read Redis for queueing, cache, dedupe sets, and metrics.
 - Manage secure storage, retrieval, rotation, and refresh of Wix credentials.
+- Maintain a local ticket manifest cache for the active event so offline validation can continue during Wix outages.
 
 Suggested endpoint surface:
 

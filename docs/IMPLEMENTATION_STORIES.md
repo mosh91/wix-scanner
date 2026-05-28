@@ -28,20 +28,24 @@ As a developer, I want a working FastAPI + React project skeleton so we can buil
 
 Tasks:
 - Create backend project with FastAPI app, routing module, settings module, and health endpoint.
-- Create frontend project with React app shell and route placeholders.
+- Create frontend project with React + Vite app shell and route placeholders.
+- Install and configure Tailwind CSS with the shadcn/ui preset.
+- Initialize shadcn/ui component registry and install baseline components (`Card`, `Badge`, `Button`, `Separator`).
+- Install and configure Sonner for toast notifications (add `<Toaster />` to app root).
 - Add shared environment configuration templates for backend and frontend.
 - Add local developer scripts for run, test, lint, and format.
 - Add Docker Compose baseline for backend, frontend, and Redis.
 - Set up i18n framework (e.g., i18next or react-i18next) with Spanish as default language.
-- Create base translation files structure (en.json, es.json) with common UI strings.
+- Create base translation files structure (en.json, es.json) with common UI strings including kiosk state messages.
 - Configure language detection and locale preference storage.
 
 Acceptance criteria:
 - Given a fresh clone, when I run the documented startup steps, then backend, frontend, and Redis start successfully.
 - Given the backend is running, when I request `/api/health`, then I receive HTTP 200 with service status.
-- Given the frontend is running, when I open the app, then the base layout and navigation render without errors.
+- Given the frontend is running, when I open the app, then the base layout and navigation render without errors using shadcn components and Tailwind classes.
 - Given the app loads, when checking browser console, then app initializes with Spanish as default language.
 - Given UI strings exist, when viewed in app, then Spanish translations are displayed for all static content.
+- Given Sonner is configured, when `toast()` is called from any component, then a toast notification appears correctly.
 
 ---
 
@@ -52,11 +56,16 @@ User story:
 As a check-in operator, I want scanner input captured reliably so I can scan tickets quickly without manual typing.
 
 Tasks:
-- Build Operator Check-In screen with hidden focused input.
-- Implement scan buffer with terminator key handling (default Enter).
+- Build Operator Check-In screen implementing the 3-state full-screen kiosk UI (Idle / Success / Error) using shadcn `Card`, Tailwind full-viewport classes, and text sizes `text-5xl` or larger for kiosk readability at one metre distance.
+- Implement a global `useHIDScanner` hook that attaches a `keydown` listener on `window`. HID scanners emit keyboard characters at burst speed and send `Enter` as the terminator. The global hook captures input regardless of focus state — no hidden input field or focus watchdog is needed.
+- Buffer incoming characters in the hook, flush on `Enter` (configurable terminator key), and apply a short debounce (50 ms default) to coalesce scanner burst input.
+- Validate payload length and character set before dispatching to the API.
+- **Idle state:** dark/deep-blue full-screen background, `animate-pulse` ring around scan icon, message `"Por favor, acerque su código QR o Ticket al escáner"`.
+- **Success state:** `bg-emerald-500` full-screen, giant `CheckCircle` icon, text `"¡ACCESO CONCEDIDO!"` at `text-7xl`, auto-returns to Idle after 2.5 s. Optionally display ticket number below.
+- **Error state:** `bg-rose-600` full-screen, giant alert icon, text `"TICKET INVÁLIDO o YA PROCESADO"` at `text-7xl`, specific rejection reason below, auto-returns to Idle after 3 s or on next scan.
+- Show a neutral "processing" overlay only if API response exceeds 300 ms.
+- Use Sonner `toast` for secondary operator notifications (e.g. offline queue warning, scanner disconnected) that do not need to block the full screen.
 - Add configurable debounce and max payload length validation.
-- Add scan result feedback states (success, duplicate, invalid, queued, error).
-- Add focus watchdog to recover scanner input capture if focus is lost.
 - **Implement WebHID API integration for scanner detection and health**:
   - Use WebHID API to enumerate and detect connected USB HID scanner devices.
   - Request user permission to access scanner device on first use (browser security model).
@@ -129,6 +138,27 @@ Acceptance criteria:
 
 ---
 
+### Story P1-US-02c: Kiosk bootstrap QR and event-scoped station enrollment
+Status: `Not Started`
+
+User story:
+As an operator, I want the kiosk to boot into a scan-ready landing page and accept a bootstrap QR so the station is bound to the correct event and shift without typing credentials.
+
+Tasks:
+- Launch the app directly into a kiosk landing page with autofocus on the scan input.
+- Treat the first QR after boot as a bootstrap QR when no event is active.
+- Bind the kiosk session to `activeEventId`, `activeStationId`, and `bootstrapSessionId`.
+- Allow an explicit admin override path for switching events on a live kiosk.
+- Clear or expire the bootstrap session on timeout, reset, or manual sign-out.
+
+Acceptance criteria:
+- Given the kiosk restarts, when the app loads, then it lands on a scan-ready page with no manual login prompt.
+- Given no event is active, when a valid bootstrap QR is scanned, then the kiosk binds to the correct event and station context.
+- Given a bootstrap QR for a different event, when the kiosk already has an active event, then the scan is rejected or requires explicit admin override.
+- Given the kiosk is already bound, when attendee QR scans arrive, then they are processed under the active event context.
+
+---
+
 ### Story P1-US-03: QR parsing and check-in API contract
 Status: `Not Started`
 
@@ -178,6 +208,7 @@ As an operator, I want scans to continue during outages so check-ins are not los
 Tasks:
 - Implement Redis keys for processed set, pending marker, and pending queue.
 - Implement atomic dedupe guard using transaction or Lua script.
+- Keep a local cached ticket manifest for the active event so offline validation can still distinguish known tickets from malformed or unknown ones.
 - Enqueue check-ins when Wix is unavailable.
 - Build worker to retry queued check-ins with attempt metadata.
 - Add dead-letter queue for terminal failures.
@@ -185,7 +216,29 @@ Tasks:
 Acceptance criteria:
 - Given Wix is unavailable, when a valid scan occurs, then API returns `QUEUED_OFFLINE` and item is persisted in Redis queue.
 - Given duplicate scans for same event/ticket, when second scan arrives, then duplicate is detected and not enqueued twice.
+- Given Wix is unavailable, when a valid ticket exists in the cached manifest, then the kiosk can still validate the ticket locally and queue the check-in for later reconciliation.
 - Given connectivity returns, when worker runs, then queued check-ins sync and status transitions are recorded.
+
+---
+
+### Story P1-US-05b: Event ticket manifest sync and local validation cache
+Status: `Not Started`
+
+User story:
+As the system, I want a local ticket manifest per event so the kiosk can validate tickets when Wix is temporarily unavailable.
+
+Tasks:
+- Add a sync job that imports the active event ticket roster from Wix into PostgreSQL and Redis.
+- Track ticket state, last known sync time, and source revision for each cached ticket.
+- Expose read APIs for ticket status lookups from the local cache.
+- Mark cached ticket data as stale when the sync horizon is exceeded.
+- Reconcile cached ticket state back to Wix after connectivity returns.
+
+Acceptance criteria:
+- Given a successful sync, when the local cache is refreshed, then the active event has a queryable ticket manifest.
+- Given Wix is offline, when a known ticket is scanned, then the backend can validate against the cached manifest and continue operating.
+- Given the cache is stale beyond the allowed threshold, when the operator opens the kiosk, then the UI warns that validation is degraded.
+- Given connectivity returns, when the sync job runs, then the cached manifest is updated and reconciliation continues.
 
 ---
 
