@@ -35,8 +35,47 @@ Core goals:
 - Backend API: Python + FastAPI
 - Frontend: React
 - Cache / Queue / Fast state: Redis
+- Primary relational DB: PostgreSQL
 - External integration: Wix Events API
 - Optional worker: Python background worker process (can be in same service initially)
+
+## Database Schema Baseline
+
+Canonical SQL schema for implementation:
+
+- [docs/DB_SCHEMA.sql](docs/DB_SCHEMA.sql)
+
+Why this schema exists:
+
+- Covers Story scope for events/blocks/config versioning, check-ins, idempotency ledgers, queue visibility, relay operations, metrics, reconciliation, auth/credential audit, and RBAC.
+- Keeps Wix as source of truth while storing operational state needed for offline reliability and observability.
+- Aligns with Redis usage (fast queue/cache) while persisting security-sensitive and auditable data in PostgreSQL.
+
+## Development Mode (Local Docker)
+
+For local development, run PostgreSQL and Redis with Docker Compose.
+
+Compose file:
+
+- [infra/docker/docker-compose.dev.yml](infra/docker/docker-compose.dev.yml)
+
+Start local infrastructure:
+
+```bash
+docker compose -f infra/docker/docker-compose.dev.yml up -d
+```
+
+Stop local infrastructure:
+
+```bash
+docker compose -f infra/docker/docker-compose.dev.yml down
+```
+
+Notes:
+
+- PostgreSQL initializes automatically with [docs/DB_SCHEMA.sql](docs/DB_SCHEMA.sql).
+- Redis runs with AOF enabled for durability in local testing.
+- Backend/frontend app containers can be added later; this file currently provides core dependencies.
 
 ## Wix MCP Workspace Setup (VS Code)
 
@@ -584,11 +623,18 @@ Deliverables:
 
 ## Deployment Guidance
 
-- Containerize backend, worker, and frontend.
-- Deploy backend and worker as separate scalable services.
-- Use managed Redis where possible for availability and backups.
+- Frontend production hosting: Cloudflare (Cloudflare Pages for React app).
+- Backend production hosting: Railway (FastAPI API + worker in the same Railway project).
+- Database production hosting: Railway PostgreSQL in the same Railway project as backend services.
+- Redis production hosting: Railway Redis (same project) or managed Redis provider.
 - Configure environment-specific settings via env vars.
 - Add dashboards and alerting before go-live.
+
+### Production Topology Decision
+
+- Cloudflare serves frontend assets and edge delivery.
+- Railway runs API, worker, Redis, and PostgreSQL in one project boundary for simpler networking and secret management.
+- Wix remains the external source of truth for final ticket check-in state.
 
 ## Operational Runbook Essentials
 
@@ -615,6 +661,7 @@ Example environment variables:
 
 - `WIX_API_BASE_URL`
 - `WIX_API_KEY` or OAuth credentials
+- `DATABASE_URL`
 - `REDIS_URL`
 - `CHECKIN_RETRY_MAX_ATTEMPTS`
 - `CHECKIN_RETRY_BASE_MS`

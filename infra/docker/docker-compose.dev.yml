@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wix_scanner_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wix_scanner
+      POSTGRES_USER: wix_scanner
+      POSTGRES_PASSWORD: wix_scanner_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../docs/DB_SCHEMA.sql:/docker-entrypoint-initdb.d/01_db_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wix_scanner -d wix_scanner"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  redis:
+    image: redis:7-alpine
+    container_name: wix_scanner_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+volumes:
+  postgres_data:
+  redis_data:
