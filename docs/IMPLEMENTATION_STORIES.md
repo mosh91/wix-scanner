@@ -57,8 +57,16 @@ Tasks:
 - Add configurable debounce and max payload length validation.
 - Add scan result feedback states (success, duplicate, invalid, queued, error).
 - Add focus watchdog to recover scanner input capture if focus is lost.
+- **Implement WebHID API integration for scanner detection and health**:
+  - Use WebHID API to enumerate and detect connected USB HID scanner devices.
+  - Request user permission to access scanner device on first use (browser security model).
+  - Monitor device connection/disconnection events in real-time.
+  - Implement device health check: send test request to scanner to verify responsiveness.
+  - Handle graceful fallback if WebHID is unavailable (keyboard input as fallback).
+  - Store permitted device IDs in browser storage for seamless reconnection.
 - **Add real-time health status indicators to scanner screen**:
-  - Scanner USB connection status (connected/disconnected badge)
+  - Scanner USB connection status via WebHID (connected/disconnected badge with vendor/model info if available)
+  - Scanner device health indicator (responding/unresponsive based on device comms)
   - Input focus state indicator (visual feedback showing focus is active)
   - Backend connectivity status (green/yellow/red indicator with last check timestamp)
   - WebSocket connection status (if applicable, showing real-time sync state)
@@ -71,16 +79,29 @@ Tasks:
   - Track concurrent request count
   - Persist scan metrics to backend DB for later analysis
   - Include scanner session metadata (session ID, operator info)
+ - **Display current and recent scan history**:
+   - Show prominently the current/last scanned ticket number on the operator screen.
+   - Maintain and display a rolling list of the last 25 scanned ticket numbers with status (success/error/duplicate).
+   - Include timestamps and result status for each recent ticket in the history list.
+   - Allow operator to click history items to view detailed scan info (response time, Wix status, etc.).
 
 Acceptance criteria:
 - Given the Operator screen is active, when a scanner sends QR text ending with Enter, then one scan payload is submitted.
 - Given focus is lost, when a scan is attempted, then the UI warns and restores scanner-ready state.
 - Given rapid scans, when 20 tickets are scanned in sequence, then each scan is processed exactly once by the frontend.
-- **Given the scanner screen is active, when loaded, then USB connection status indicator shows current state (connected/disconnected).**
-- **Given backend is responsive, when checking health indicators, then status shows green and last-check timestamp is recent (within 5s).**
+- **Given a USB HID scanner is plugged in, when the Operator screen loads, then WebHID API detects the device and shows connected status with device info.**
+- **Given WebHID detects a scanner connection, when user grants permission (first use), then device is remembered for future sessions.**
+- **Given a connected scanner is unplugged, when device disconnect event fires, then UI immediately reflects disconnected state.**
+- **Given scanner is connected but unresponsive, when health check runs (every 10s), then UI indicates unresponsive state (yellow indicator).**
+- **Given WebHID is unavailable or blocked, when fallback is triggered, then app gracefully accepts keyboard input for scanning without errors.**
+- **Given the scanner screen is active, when loaded, then all health indicators (USB connection via WebHID, focus state, backend status) are displayed and updating.**
 - **Given response metrics panel is visible, when viewing, then last 10-20 response times are displayed with min/max/average calculations.**
 - **Given scans are processed, when metrics are collected, then latency and success/failure data are persisted to DB and queryable for later analysis.**
 - **Given focus is on the scanner input field, when observing UI, then focus indicator shows active state visually (e.g., glowing border or icon).**
+- **Given a ticket is scanned successfully, when the operator screen updates, then the current ticket number is displayed prominently in the UI.**
+- **Given multiple tickets are scanned in sequence, when viewing the scan history panel, then the last 25 ticket numbers are shown with timestamps and status badges (success/duplicate/error).**
+- **Given an operator clicks on a history item, when the detail view opens, then full scan metadata is shown including response time, Wix check-in status, and error details (if any).**
+- **Given the session starts fresh, when the first scan occurs, then the history list begins populating and grows up to 25 items, then older items are removed as new ones are added.**
 
 ---
 
