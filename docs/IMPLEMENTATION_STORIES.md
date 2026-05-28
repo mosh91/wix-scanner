@@ -32,11 +32,16 @@ Tasks:
 - Add shared environment configuration templates for backend and frontend.
 - Add local developer scripts for run, test, lint, and format.
 - Add Docker Compose baseline for backend, frontend, and Redis.
+- Set up i18n framework (e.g., i18next or react-i18next) with Spanish as default language.
+- Create base translation files structure (en.json, es.json) with common UI strings.
+- Configure language detection and locale preference storage.
 
 Acceptance criteria:
 - Given a fresh clone, when I run the documented startup steps, then backend, frontend, and Redis start successfully.
 - Given the backend is running, when I request `/api/health`, then I receive HTTP 200 with service status.
 - Given the frontend is running, when I open the app, then the base layout and navigation render without errors.
+- Given the app loads, when checking browser console, then app initializes with Spanish as default language.
+- Given UI strings exist, when viewed in app, then Spanish translations are displayed for all static content.
 
 ---
 
@@ -52,11 +57,54 @@ Tasks:
 - Add configurable debounce and max payload length validation.
 - Add scan result feedback states (success, duplicate, invalid, queued, error).
 - Add focus watchdog to recover scanner input capture if focus is lost.
+- **Add real-time health status indicators to scanner screen**:
+  - Scanner USB connection status (connected/disconnected badge)
+  - Input focus state indicator (visual feedback showing focus is active)
+  - Backend connectivity status (green/yellow/red indicator with last check timestamp)
+  - WebSocket connection status (if applicable, showing real-time sync state)
+- **Implement response metrics display**:
+  - Current response time display (last request latency in ms)
+  - Response time history (last 10-20 responses with min/max/average)
+  - Success/error rate indicator (e.g., "98% success last hour")
+- **Add metrics collection service**:
+  - Collect response time, timestamp, success/failure status for each scan
+  - Track concurrent request count
+  - Persist scan metrics to backend DB for later analysis
+  - Include scanner session metadata (session ID, operator info)
 
 Acceptance criteria:
 - Given the Operator screen is active, when a scanner sends QR text ending with Enter, then one scan payload is submitted.
 - Given focus is lost, when a scan is attempted, then the UI warns and restores scanner-ready state.
 - Given rapid scans, when 20 tickets are scanned in sequence, then each scan is processed exactly once by the frontend.
+- **Given the scanner screen is active, when loaded, then USB connection status indicator shows current state (connected/disconnected).**
+- **Given backend is responsive, when checking health indicators, then status shows green and last-check timestamp is recent (within 5s).**
+- **Given response metrics panel is visible, when viewing, then last 10-20 response times are displayed with min/max/average calculations.**
+- **Given scans are processed, when metrics are collected, then latency and success/failure data are persisted to DB and queryable for later analysis.**
+- **Given focus is on the scanner input field, when observing UI, then focus indicator shows active state visually (e.g., glowing border or icon).**
+
+---
+
+### Story P1-US-02b: Backend metrics schema and real-time health API
+Status: `Not Started`
+
+User story:
+As an operator and system, I want structured metrics collection and a health API so scanner performance can be monitored and analyzed.
+
+Tasks:
+- Design and implement ScanMetric database schema with fields: timestamp, session_id, operator_id, response_time_ms, latency_percentile, success_status, error_code, concurrent_count, scanner_status.
+- Create `/api/health/scanner` endpoint returning current backend connectivity, response time stats (last 100 requests), and system health.
+- Implement metrics middleware to intercept scan requests and log timing/status/concurrency.
+- Implement metrics aggregation service for real-time calculations (min/max/avg latency, success rate).
+- Add WebSocket endpoint `/ws/health` for real-time health status push if frontend requests live updates (fallback to polling endpoint).
+- Implement metrics cleanup/archival policy (e.g., keep high-detail metrics for 24h, aggregate for 30d).
+- Add metrics query endpoint `/api/metrics/scans` with filters (date_range, operator_id, session_id) for analysis.
+
+Acceptance criteria:
+- Given a scan request completes, when metrics middleware runs, then latency and status are recorded in ScanMetric table.
+- Given `/api/health/scanner` is called, then response includes latency percentiles, success rate, and backend status (green/yellow/red).
+- Given frontend polls health endpoint every 5 seconds, when response time is queried, then last 10-20 response times are available in payload.
+- Given metrics are queried, when filters are applied, then results are aggregated correctly and queryable for performance analysis.
+- Given WebSocket is enabled, when client subscribes to `/ws/health`, then real-time health updates are pushed to client without polling delay.
 
 ---
 
@@ -616,34 +664,35 @@ Acceptance criteria:
 
 1. P1-US-01
 2. P1-US-02
-3. P1-US-03
-4. P1-US-04
-5. P1-US-05
-6. P1-US-06
-7. P1-US-07
-8. P1-US-08
-9. P1-US-09
-10. P1-US-10
-11. P2-US-01
-12. P2-US-02
-13. P2-US-04
-14. P2-US-05
-15. P2-US-06
-16. P2-US-07
-17. P2-US-08
-18. P2-US-09
-19. P2-US-03
-20. P3-US-01
-21. P3-US-02
-22. P3-US-03
-23. P3-US-04
-24. P3-US-05
-25. P4-US-01
-26. P4-US-02
-27. P4-US-03
-28. P4-US-04
-29. P4-US-05
-30. X-US-01 and X-US-02 continuously
+3. P1-US-02b
+4. P1-US-03
+5. P1-US-04
+6. P1-US-05
+7. P1-US-06
+8. P1-US-07
+9. P1-US-08
+10. P1-US-09
+11. P1-US-10
+12. P2-US-01
+13. P2-US-02
+14. P2-US-04
+15. P2-US-05
+16. P2-US-06
+17. P2-US-07
+18. P2-US-08
+19. P2-US-09
+20. P2-US-03
+21. P3-US-01
+22. P3-US-02
+23. P3-US-03
+24. P3-US-04
+25. P3-US-05
+26. P4-US-01
+27. P4-US-02
+28. P4-US-03
+29. P4-US-04
+30. P4-US-05
+31. X-US-01 and X-US-02 continuously
 
 ## Definition of Done (Global)
 
