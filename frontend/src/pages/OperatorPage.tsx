@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, KeyRound, LoaderCircle, LogOut, QrCode, Usb } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Eye,
+  HeartPulse,
+  KeyRound,
+  LoaderCircle,
+  LogOut,
+  QrCode,
+  Server,
+  Usb,
+  Wifi,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Separator } from "@/components/ui/separator";
 import { useBackendScannerHealth } from "@/hooks/useBackendScannerHealth";
 import { useHIDScanner } from "@/hooks/useHIDScanner";
@@ -36,6 +49,8 @@ type ScanHistoryItem = {
   timestamp: number;
   responseTimeMs: number;
 };
+
+type HealthSeverity = "good" | "warn" | "bad";
 
 const KIOSK_RESET_MS = {
   success: 2500,
@@ -78,6 +93,85 @@ export default function OperatorPage() {
 
   const webhid = useWebHIDScannerHealth();
   const backendHealth = useBackendScannerHealth();
+
+  const healthItems = useMemo(
+    () => {
+      const backendStatus = backendHealth.data?.backend_status ?? (backendHealth.error ? "red" : "yellow");
+
+      return [
+        {
+          key: "usb",
+          label: t("operator.health.usb"),
+          icon: Usb,
+          value: webhid.connected ? "connected" : "disconnected",
+          severity: (webhid.connected ? "good" : "bad") as HealthSeverity,
+          problem: webhid.connected ? null : t("operator.scannerDisconnected"),
+        },
+        {
+          key: "device",
+          label: t("operator.health.device"),
+          icon: HeartPulse,
+          value: webhid.health,
+          severity: (
+            webhid.health === "responding" ? "good" : webhid.health === "unresponsive" ? "bad" : "warn"
+          ) as HealthSeverity,
+          problem:
+            webhid.health === "responding"
+              ? null
+              : webhid.health === "unresponsive"
+                ? "El scanner esta conectado pero no responde a los chequeos."
+                : "No hay suficientes datos para confirmar la salud del dispositivo.",
+        },
+        {
+          key: "focus",
+          label: t("operator.health.focus"),
+          icon: Eye,
+          value: isWindowFocused ? "active" : "inactive",
+          severity: (isWindowFocused ? "good" : "warn") as HealthSeverity,
+          problem: isWindowFocused ? null : t("operator.focusLost"),
+        },
+        {
+          key: "backend",
+          label: t("operator.health.backend"),
+          icon: Server,
+          value: backendStatus,
+          severity: (backendStatus === "green" ? "good" : backendStatus === "yellow" ? "warn" : "bad") as HealthSeverity,
+          problem:
+            backendStatus === "green"
+              ? null
+              : backendStatus === "yellow"
+                ? "Backend lento o con degradacion parcial."
+                : backendHealth.error ?? t("operator.backendDegraded"),
+        },
+        {
+          key: "websocket",
+          label: t("operator.health.websocket"),
+          icon: Wifi,
+          value: "not configured",
+          severity: "warn" as HealthSeverity,
+          problem: "La conexion WebSocket aun no esta configurada para este kiosco.",
+        },
+      ];
+    },
+    [
+      backendHealth.data?.backend_status,
+      backendHealth.error,
+      isWindowFocused,
+      t,
+      webhid.connected,
+      webhid.health,
+    ],
+  );
+
+  const severityBadgeClass = (severity: HealthSeverity): string => {
+    if (severity === "good") {
+      return "border-emerald-300/60 bg-emerald-500/20 text-emerald-100";
+    }
+    if (severity === "warn") {
+      return "border-amber-300/60 bg-amber-500/20 text-amber-100";
+    }
+    return "border-rose-300/60 bg-rose-500/20 text-rose-100";
+  };
 
   // When the session expires, return to bootstrap-idle.
   useEffect(() => {
@@ -411,28 +505,43 @@ export default function OperatorPage() {
               <CardDescription className="text-white/70">{t("operator.healthDescription")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm">
-              <div className="flex items-center justify-between rounded-lg border border-white/20 px-3 py-2">
-                <span>{t("operator.health.usb")}</span>
-                <Badge variant={webhid.connected ? "default" : "outline"}>{webhid.connected ? "connected" : "disconnected"}</Badge>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                {healthItems.map((item) => {
+                  const Icon = item.icon;
+                  const compactStatus = (
+                    <div
+                      key={item.key}
+                      className="flex min-h-24 flex-col justify-between rounded-lg border border-white/20 bg-white/5 p-2"
+                    >
+                      <div className="flex items-start gap-1 text-[11px] leading-tight text-white/80">
+                        <Icon className="size-3.5" />
+                        <span className="whitespace-normal break-words">{item.label}</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={`w-fit border px-1.5 py-0 text-[10px] uppercase tracking-wide ${severityBadgeClass(item.severity)}`}
+                      >
+                        {item.value}
+                      </Badge>
+                    </div>
+                  );
+
+                  if (item.problem && item.severity !== "good") {
+                    return (
+                      <HoverCard key={item.key} openDelay={120} closeDelay={80}>
+                        <HoverCardTrigger asChild>{compactStatus}</HoverCardTrigger>
+                        <HoverCardContent className="border-amber-300/50 bg-black/90 text-white">
+                          <p className="text-xs font-semibold">{item.label}</p>
+                          <p className="mt-1 text-xs text-white/80">{item.problem}</p>
+                        </HoverCardContent>
+                      </HoverCard>
+                    );
+                  }
+
+                  return compactStatus;
+                })}
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/20 px-3 py-2">
-                <span>{t("operator.health.device")}</span>
-                <Badge variant={webhid.health === "responding" ? "default" : "secondary"}>{webhid.health}</Badge>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/20 px-3 py-2">
-                <span>{t("operator.health.focus")}</span>
-                <Badge variant={isWindowFocused ? "default" : "secondary"}>{isWindowFocused ? "active" : "inactive"}</Badge>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/20 px-3 py-2">
-                <span>{t("operator.health.backend")}</span>
-                <Badge variant={backendHealth.data?.backend_status === "red" ? "secondary" : "default"}>
-                  {backendHealth.data?.backend_status ?? "unknown"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-white/20 px-3 py-2">
-                <span>{t("operator.health.websocket")}</span>
-                <Badge variant="outline">not configured</Badge>
-              </div>
+
               <Separator className="bg-white/20" />
               <div className="rounded-lg border border-white/20 p-3">
                 <p className="flex items-center gap-2 text-white/85">
@@ -458,12 +567,31 @@ export default function OperatorPage() {
               <CardTitle className="text-2xl">{t("operator.metricsTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">
-              <p>{t("operator.metrics.lastMs")}: {scanHistory[0]?.responseTimeMs ?? 0} ms</p>
-              <p>{t("operator.metrics.min")}: {metrics.min} ms</p>
-              <p>{t("operator.metrics.max")}: {metrics.max} ms</p>
-              <p>{t("operator.metrics.avg")}: {metrics.avg} ms</p>
-              <p>{t("operator.metrics.successRate")}: {metrics.successRate}%</p>
-              <p className="text-xs text-white/70">{metrics.history.join(", ") || "0"}</p>
+              <div className="overflow-x-auto">
+                <div className="grid min-w-[560px] grid-cols-5 gap-2">
+                  <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                    <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">{t("operator.metrics.lastMs")}</p>
+                    <p className="mt-1 text-sm font-semibold">{scanHistory[0]?.responseTimeMs ?? 0} ms</p>
+                  </div>
+                  <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                    <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">{t("operator.metrics.min")}</p>
+                    <p className="mt-1 text-sm font-semibold">{metrics.min} ms</p>
+                  </div>
+                  <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                    <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">{t("operator.metrics.max")}</p>
+                    <p className="mt-1 text-sm font-semibold">{metrics.max} ms</p>
+                  </div>
+                  <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                    <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">{t("operator.metrics.avg")}</p>
+                    <p className="mt-1 text-sm font-semibold">{metrics.avg} ms</p>
+                  </div>
+                  <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                    <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">{t("operator.metrics.successRate")}</p>
+                    <p className="mt-1 text-sm font-semibold">{metrics.successRate}%</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs leading-tight text-white/70 whitespace-normal break-words">{metrics.history.join(", ") || "0"}</p>
             </CardContent>
           </Card>
 
