@@ -49,7 +49,9 @@
       "min": "Min",
       "max": "Max",
       "avg": "Average",
-      "successRate": "Success rate"
+      "successRate": "Success rate",
+      "historySeries": "Recent latency series (ms)",
+      "noHistory": "No data yet"
     },
     "detail": {
       "status": "Result",

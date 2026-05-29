@@ -188,17 +188,17 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-03: QR parsing and check-in API contract
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As the backend service, I want to parse QR payloads consistently so ticket identifiers can be validated and checked in.
 
 Tasks:
-- Define scan request/response schemas.
-- Implement QR parsing service with support for known payload formats.
-- Validate eventId/ticketNumber extraction and reject malformed payloads.
-- Add idempotency key generation (`eventId + ticketNumber + blockId + operationType`).
-- Return normalized status codes for frontend display.
+- [x] Define scan request/response schemas.
+- [x] Implement QR parsing service with support for known payload formats.
+- [x] Validate eventId/ticketNumber extraction and reject malformed payloads.
+- [x] Add idempotency key generation (`eventId + ticketNumber + blockId + operationType`).
+- [x] Return normalized status codes for frontend display.
 
 Acceptance criteria:
 - Given a valid QR payload, when `/api/checkins/scan` is called, then ticketNumber and event context are parsed correctly.

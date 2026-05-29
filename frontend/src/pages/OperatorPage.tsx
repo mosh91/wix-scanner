@@ -465,7 +465,9 @@ export default function OperatorPage() {
                     {t("bootstrap.statusActive")}
                   </Badge>
                 ) : (
-                  <Badge variant="outline">{t("bootstrap.statusInactive")}</Badge>
+                  <Badge variant="outline" className="border-white/60 bg-white/10 text-white">
+                    {t("bootstrap.statusInactive")}
+                  </Badge>
                 )}
               </CardTitle>
             </CardHeader>
@@ -591,7 +593,14 @@ export default function OperatorPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-xs leading-tight text-white/70 whitespace-normal break-words">{metrics.history.join(", ") || "0"}</p>
+              <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+                <p className="text-[11px] leading-tight text-white/75 whitespace-normal break-words">
+                  {t("operator.metrics.historySeries")}
+                </p>
+                <p className="mt-1 text-xs leading-tight text-white/80 whitespace-normal break-words">
+                  {metrics.history.length > 0 ? metrics.history.join(", ") : t("operator.metrics.noHistory")}
+                </p>
+              </div>
             </CardContent>
           </Card>
 

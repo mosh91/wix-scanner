@@ -344,3 +344,84 @@ def test_cleanup_old_metrics_returns_counts() -> None:
     assert result["archived"] >= 0
     assert result["purged"] >= 0
 
+
+# ---------------------------------------------------------------------------
+# P1-US-03 — QR parsing and check-in API contract
+# ---------------------------------------------------------------------------
+
+
+def test_scan_parses_event_and_ticket_from_key_value_payload() -> None:
+    """Known key/value QR format should extract event/ticket/block context."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={
+            "payload": "eventId=evt-2026-001;ticketNumber=tkt-778899;blockId=door-a;operationType=checkin",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "CHECKED_IN"
+    assert body["ticket_number"] == "TKT-778899"
+    assert body["event_id"] == "evt-2026-001"
+    assert body["block_id"] == "door-a"
+    assert body["operation_type"] == "checkin"
+
+
+def test_scan_parses_json_payload_contract() -> None:
+    """JSON QR payload format should be supported as a known format."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={
+            "payload": '{"eventId":"evt-json-1","ticketNumber":"abc-123","blockId":"vip"}',
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "CHECKED_IN"
+    assert body["event_id"] == "evt-json-1"
+    assert body["ticket_number"] == "ABC-123"
+    assert body["block_id"] == "vip"
+
+
+def test_scan_malformed_payload_returns_invalid_ticket_with_reason() -> None:
+    """Malformed known format (missing ticketNumber) returns INVALID_TICKET with clear reason."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": "eventId=evt-only-no-ticket;blockId=door-b"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "INVALID_TICKET"
+    assert body["error_code"] == "INVALID_TICKET"
+    assert body["accepted"] is False
+    assert isinstance(body["reason"], str)
+    assert "ticketNumber" in body["reason"]
+
+
+def test_scan_identical_requests_reuse_same_idempotency_result() -> None:
+    """Repeated identical scan contract must return same idempotency key and same normalized result."""
+    client = TestClient(app)
+
+    payload = "eventId=evt-idem-1;ticketNumber=tkt-idem-001;blockId=main;operationType=checkin"
+    response_one = client.post("/api/checkins/scan", json={"payload": payload})
+    response_two = client.post("/api/checkins/scan", json={"payload": payload})
+
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+
+    body_one = response_one.json()
+    body_two = response_two.json()
+    assert body_one["idempotency_key"] == body_two["idempotency_key"]
+    assert body_one["status"] == body_two["status"]
+    assert body_one["ticket_number"] == body_two["ticket_number"]
+    assert body_one["event_id"] == body_two["event_id"]
+
