@@ -49,7 +49,7 @@ This iteration adds **critical Phase 1 and Phase 4B stories** addressing archite
 ## Phase 1: Core Functionality and MVP
 
 ### Story P1-US-01: Bootstrap backend and frontend foundations
-Status: `Not Started`
+Status: `Completed`
 
 User story:
 As a developer, I want a working FastAPI + React project skeleton so we can build features quickly.

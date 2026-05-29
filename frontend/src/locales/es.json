@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "Wix Scanner",
+    "tagline": "Entrada de eventos rápida y fiable para venues con Wix"
+  },
+  "nav": {
+    "home": "Inicio",
+    "operator": "Operador"
+  },
+  "layout": {
+    "title": "Base del proyecto lista",
+    "description": "La salud del backend, las cadenas traducidas y la interfaz del operador ya están conectadas para avanzar rápido.",
+    "primaryAction": "Abrir pantalla de operador"
+  },
+  "home": {
+    "title": "Bienvenido",
+    "description": "Este inicio usa español por defecto e incluye bloques de construcción estilo shadcn.",
+    "toastButton": "Mostrar aviso"
+  },
+  "operator": {
+    "title": "Plantilla de pantalla del operador",
+    "description": "Esta ruta ya está preparada para la UI de kiosco y el flujo del escáner."
+  },
+  "toasts": {
+    "welcome": "Sonner ya está listo para notificaciones del operador."
+  }
+}

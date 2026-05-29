@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "Wix Scanner",
+    "tagline": "Fast, reliable event check-in for Wix-powered venues"
+  },
+  "nav": {
+    "home": "Home",
+    "operator": "Operator"
+  },
+  "layout": {
+    "title": "Project skeleton ready",
+    "description": "Backend health, translated UI strings, and the operator shell are wired for rapid feature work.",
+    "primaryAction": "Open operator screen"
+  },
+  "home": {
+    "title": "Welcome",
+    "description": "This starter uses Spanish by default and includes shadcn-style building blocks.",
+    "toastButton": "Show toast"
+  },
+  "operator": {
+    "title": "Operator screen placeholder",
+    "description": "This route is ready for the kiosk UI and scanner workflow."
+  },
+  "toasts": {
+    "welcome": "Sonner is ready for operator notifications."
+  }
+}
