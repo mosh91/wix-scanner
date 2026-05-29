@@ -64,6 +64,24 @@
       "invalidCharset": "El payload del scanner contiene caracteres no permitidos."
     }
   },
+  "bootstrap": {
+    "waitingTitle": "ESCANEE EL QR DE ARRANQUE",
+    "waitingSubtitle": "Acerque el QR de arranque al escáner para activar el kiosco",
+    "successTitle": "¡KIOSCO ACTIVADO!",
+    "errorTitle": "QR DE ARRANQUE INVÁLIDO",
+    "sessionTitle": "Sesión del kiosco",
+    "statusActive": "Activa",
+    "statusInactive": "Sin activar",
+    "enrolledEvent": "Evento",
+    "enrolledStation": "Estación",
+    "enrolledExpiry": "Expira",
+    "resetSession": "Restablecer sesión",
+    "sessionCleared": "Sesión cerrada. Escanee el QR de arranque para reactivar.",
+    "sessionExpired": "La sesión del kiosco ha expirado. Escanee el QR de arranque.",
+    "notEnrolledError": "Kiosco sin activar. Escanee el QR de arranque primero.",
+    "enrolledToast": "Kiosco activado — Evento: {{event}}, Estación: {{station}}",
+    "unknownError": "Error desconocido al validar el QR de arranque."
+  },
   "toasts": {
     "welcome": "Sonner ya está listo para notificaciones del operador."
   }

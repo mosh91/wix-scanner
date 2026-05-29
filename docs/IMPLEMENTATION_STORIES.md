@@ -167,17 +167,17 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-02c: Kiosk bootstrap QR and event-scoped station enrollment
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an operator, I want the kiosk to boot into a scan-ready landing page and accept a bootstrap QR so the station is bound to the correct event and shift without typing credentials.
 
 Tasks:
-- Launch the app directly into a kiosk landing page with autofocus on the scan input.
-- Treat the first QR after boot as a bootstrap QR when no event is active.
-- Bind the kiosk session to `activeEventId`, `activeStationId`, and `bootstrapSessionId`.
-- Allow an explicit admin override path for switching events on a live kiosk.
-- Clear or expire the bootstrap session on timeout, reset, or manual sign-out.
+- [x] Launch the app directly into a kiosk landing page with autofocus on the scan input.
+- [x] Treat the first QR after boot as a bootstrap QR when no event is active.
+- [x] Bind the kiosk session to `activeEventId`, `activeStationId`, and `bootstrapSessionId`.
+- [x] Allow an explicit admin override path for switching events on a live kiosk.
+- [x] Clear or expire the bootstrap session on timeout, reset, or manual sign-out.
 
 Acceptance criteria:
 - Given the kiosk restarts, when the app loads, then it lands on a scan-ready page with no manual login prompt.

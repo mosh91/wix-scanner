@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     api_v1_prefix: str = "/api"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # Secret used to sign and verify bootstrap QR payloads.
+    # Must be set to a strong random value in production.
+    bootstrap_secret: str = "dev-bootstrap-secret-change-in-production"
 
     model_config = SettingsConfigDict(
         env_file=".env",

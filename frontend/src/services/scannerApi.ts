@@ -27,12 +27,47 @@ export type ScanSubmitContext = {
   sessionId?: string;
   operatorId?: string;
   scannerStatus?: string;
+  activeEventId?: string;
+  activeStationId?: string;
 };
+
+// ─── Bootstrap API ──────────────────────────────────────────────────────────
+
+export const BOOTSTRAP_QR_PREFIX = "BOOTSTRAP:v1:";
+export const ADMIN_BOOTSTRAP_QR_PREFIX = "ADMIN_BOOTSTRAP:v1:";
+
+export type BootstrapValidateRequest = {
+  payload: string;
+  current_event_id?: string;
+};
+
+export type BootstrapSessionResponse = {
+  bootstrap_session_id: string;
+  event_id: string;
+  station_id: string;
+  expires_at: number;
+  is_admin_override: boolean;
+};
+
+/** Returns true if the scanned payload is a kiosk bootstrap QR (normal or admin). */
+export function isBootstrapQR(payload: string): boolean {
+  return (
+    payload.startsWith(BOOTSTRAP_QR_PREFIX) ||
+    payload.startsWith(ADMIN_BOOTSTRAP_QR_PREFIX)
+  );
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
 export async function submitScan(payload: string, context: ScanSubmitContext = {}): Promise<ScanResponse> {
-  const { source = "hid", sessionId = "session-local", operatorId = "operator-local", scannerStatus = "connected" } = context;
+  const {
+    source = "hid",
+    sessionId = "session-local",
+    operatorId = "operator-local",
+    scannerStatus = "connected",
+    activeEventId,
+    activeStationId,
+  } = context;
   const response = await fetch(`${API_BASE}/checkins/scan`, {
     method: "POST",
     headers: {
@@ -44,6 +79,8 @@ export async function submitScan(payload: string, context: ScanSubmitContext = {
       session_id: sessionId,
       operator_id: operatorId,
       scanner_status: scannerStatus,
+      active_event_id: activeEventId ?? null,
+      active_station_id: activeStationId ?? null,
     }),
   });
 
@@ -60,4 +97,32 @@ export async function fetchScannerHealth(): Promise<ScannerHealthResponse> {
     throw new Error(`Health check failed with status ${response.status}`);
   }
   return (await response.json()) as ScannerHealthResponse;
+}
+
+export async function validateBootstrapQR(
+  request: BootstrapValidateRequest,
+): Promise<BootstrapSessionResponse> {
+  const response = await fetch(`${API_BASE}/bootstrap/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const detail =
+      (errorData as { detail?: string }).detail ??
+      `Bootstrap validation failed (${response.status})`;
+    throw new Error(detail);
+  }
+
+  return (await response.json()) as BootstrapSessionResponse;
+}
+
+export async function clearBootstrapSession(bootstrapSessionId: string): Promise<void> {
+  await fetch(`${API_BASE}/bootstrap/clear`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bootstrap_session_id: bootstrapSessionId }),
+  });
 }

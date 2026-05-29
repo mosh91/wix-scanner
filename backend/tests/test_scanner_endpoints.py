@@ -120,6 +120,160 @@ def test_scan_metric_records_latency_percentile() -> None:
     assert 0.0 <= rows[0]["latency_percentile"] <= 100.0
 
 
+# ---------------------------------------------------------------------------
+# P1-US-02c — bootstrap QR and kiosk session enrollment tests
+# ---------------------------------------------------------------------------
+
+
+def _generate_bootstrap_qr(
+    client: TestClient,
+    event_id: str = "event-test-001",
+    station_id: str = "station-entrance-1",
+    ttl_seconds: int = 3600,
+    is_admin: bool = False,
+) -> str:
+    """Helper: use the dev generate endpoint to produce a valid QR payload."""
+    resp = client.get(
+        "/api/bootstrap/generate",
+        params={
+            "event_id": event_id,
+            "station_id": station_id,
+            "ttl_seconds": ttl_seconds,
+            "is_admin": str(is_admin).lower(),
+        },
+    )
+    assert resp.status_code == 200
+    return resp.json()["qr_payload"]
+
+
+def test_bootstrap_generate_returns_valid_payload() -> None:
+    """Dev generate endpoint must return a properly formatted QR payload."""
+    client = TestClient(app)
+    payload = _generate_bootstrap_qr(client)
+    assert payload.startswith("BOOTSTRAP:v1:")
+    parts = payload[len("BOOTSTRAP:v1:"):].split(":")
+    assert len(parts) == 4, "Payload must have 4 colon-separated fields after the prefix"
+
+
+def test_bootstrap_validate_new_kiosk_enrolls_session() -> None:
+    """A valid bootstrap QR with no prior event must return a session binding."""
+    client = TestClient(app)
+    qr = _generate_bootstrap_qr(client, event_id="evt-01", station_id="stn-01")
+
+    resp = client.post("/api/bootstrap/validate", json={"payload": qr})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["event_id"] == "evt-01"
+    assert body["station_id"] == "stn-01"
+    assert "bootstrap_session_id" in body
+    assert body["expires_at"] > 0
+    assert body["is_admin_override"] is False
+
+
+def test_bootstrap_validate_same_event_re_enrollment_allowed() -> None:
+    """Re-enrolling to the same event/station must succeed without admin override."""
+    client = TestClient(app)
+    qr = _generate_bootstrap_qr(client, event_id="evt-same", station_id="stn-same")
+
+    resp = client.post(
+        "/api/bootstrap/validate",
+        json={"payload": qr, "current_event_id": "evt-same"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["event_id"] == "evt-same"
+
+
+def test_bootstrap_validate_different_event_blocked_without_admin() -> None:
+    """Switching to a different event without admin QR must return 409."""
+    client = TestClient(app)
+    qr = _generate_bootstrap_qr(client, event_id="evt-new", station_id="stn-new")
+
+    resp = client.post(
+        "/api/bootstrap/validate",
+        json={"payload": qr, "current_event_id": "evt-old"},
+    )
+
+    assert resp.status_code == 409
+
+
+def test_bootstrap_validate_admin_qr_allows_event_switch() -> None:
+    """Admin bootstrap QR must bypass the event-switch guard."""
+    client = TestClient(app)
+    admin_qr = _generate_bootstrap_qr(
+        client, event_id="evt-switched", station_id="stn-a", is_admin=True
+    )
+
+    resp = client.post(
+        "/api/bootstrap/validate",
+        json={"payload": admin_qr, "current_event_id": "evt-old"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["event_id"] == "evt-switched"
+    assert body["is_admin_override"] is True
+
+
+def test_bootstrap_validate_invalid_payload_returns_422() -> None:
+    """Garbage or unsigned payloads must be rejected."""
+    client = TestClient(app)
+
+    resp = client.post("/api/bootstrap/validate", json={"payload": "BOOTSTRAP:v1:bad:data:0:fakehash"})
+    assert resp.status_code == 422
+
+
+def test_bootstrap_clear_session_succeeds() -> None:
+    """Clearing a session must return 204 — even for an unknown session ID."""
+    client = TestClient(app)
+    qr = _generate_bootstrap_qr(client, event_id="evt-clear", station_id="stn-clear")
+    enroll_resp = client.post("/api/bootstrap/validate", json={"payload": qr})
+    session_id = enroll_resp.json()["bootstrap_session_id"]
+
+    clear_resp = client.post("/api/bootstrap/clear", json={"bootstrap_session_id": session_id})
+    assert clear_resp.status_code == 204
+
+
+def test_bootstrap_generate_blocked_in_production() -> None:
+    """Generate endpoint must be blocked when environment == 'production'."""
+    from app.core.config import Settings, get_settings
+    from app.main import app as fastapi_app
+
+    class ProdSettings(Settings):
+        environment: str = "production"
+
+    fastapi_app.dependency_overrides[get_settings] = lambda: ProdSettings()
+    try:
+        prod_client = TestClient(fastapi_app)
+        resp = prod_client.get(
+            "/api/bootstrap/generate",
+            params={"event_id": "e1", "station_id": "s1"},
+        )
+        assert resp.status_code == 403
+    finally:
+        fastapi_app.dependency_overrides.clear()
+
+
+def test_scan_with_enrolled_context_accepted() -> None:
+    """Scan request carrying active_event_id and active_station_id must be accepted."""
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/checkins/scan",
+        json={
+            "payload": "TICKET-ENROLLED-1",
+            "session_id": "session-enrolled",
+            "operator_id": "operator-enrolled",
+            "active_event_id": "evt-enrolled",
+            "active_station_id": "stn-door-1",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "CHECKED_IN"
+
+
 def test_metrics_query_date_range_filter() -> None:
     """Metrics query endpoint filters correctly using start_ts / end_ts."""
     client = TestClient(app)

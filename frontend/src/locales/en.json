@@ -64,6 +64,24 @@
       "invalidCharset": "Scanner payload contains unsupported characters."
     }
   },
+  "bootstrap": {
+    "waitingTitle": "SCAN BOOTSTRAP QR",
+    "waitingSubtitle": "Present the bootstrap QR to the scanner to activate this kiosk",
+    "successTitle": "KIOSK ACTIVATED!",
+    "errorTitle": "INVALID BOOTSTRAP QR",
+    "sessionTitle": "Kiosk session",
+    "statusActive": "Active",
+    "statusInactive": "Not enrolled",
+    "enrolledEvent": "Event",
+    "enrolledStation": "Station",
+    "enrolledExpiry": "Expires",
+    "resetSession": "Reset session",
+    "sessionCleared": "Session cleared. Scan bootstrap QR to re-activate.",
+    "sessionExpired": "Kiosk session expired. Scan the bootstrap QR to re-activate.",
+    "notEnrolledError": "Kiosk is not enrolled. Scan the bootstrap QR first.",
+    "enrolledToast": "Kiosk enrolled — Event: {{event}}, Station: {{station}}",
+    "unknownError": "Unknown error validating bootstrap QR."
+  },
   "toasts": {
     "welcome": "Sonner is ready for operator notifications."
   }

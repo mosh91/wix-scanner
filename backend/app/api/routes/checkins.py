@@ -23,6 +23,9 @@ class ScanRequest(BaseModel):
     session_id: str = Field(default="session-local")
     operator_id: str = Field(default="operator-local")
     scanner_status: str = Field(default="connected")
+    # Bootstrap session context — supplied by an enrolled kiosk
+    active_event_id: str | None = Field(default=None)
+    active_station_id: str | None = Field(default=None)
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
