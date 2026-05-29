@@ -232,18 +232,18 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-05: Redis offline queue and dedupe safeguards
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an operator, I want scans to continue during outages so check-ins are not lost.
 
 Tasks:
-- Implement Redis keys for processed set, pending marker, and pending queue.
-- Implement atomic dedupe guard using transaction or Lua script.
-- Keep a local cached ticket manifest for the active event so offline validation can still distinguish known tickets from malformed or unknown ones.
-- Enqueue check-ins when Wix is unavailable.
-- Build worker to retry queued check-ins with attempt metadata.
-- Add dead-letter queue for terminal failures.
+- [x] Implement Redis keys for processed set, pending marker, and pending queue.
+- [x] Implement atomic dedupe guard using transaction or Lua script.
+- [x] Keep a local cached ticket manifest for the active event so offline validation can still distinguish known tickets from malformed or unknown ones.
+- [x] Enqueue check-ins when Wix is unavailable.
+- [x] Build worker to retry queued check-ins with attempt metadata.
+- [x] Add dead-letter queue for terminal failures.
 
 Acceptance criteria:
 - Given Wix is unavailable, when a valid scan occurs, then API returns `QUEUED_OFFLINE` and item is persisted in Redis queue.

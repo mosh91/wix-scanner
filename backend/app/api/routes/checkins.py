@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.qr_parser import QRParseError, parse_qr_payload
+from app.services.offline_queue import PendingCheckinJob, get_offline_queue_service
 from app.services.scan_runtime import scan_runtime_store
 from app.services.wix_client import get_wix_client
 
@@ -19,6 +20,7 @@ class ScanStatus(str, Enum):
     checked_in = "CHECKED_IN"
     invalid_ticket = "INVALID_TICKET"
     already_checked_in = "ALREADY_CHECKED_IN"
+    queued_offline = "QUEUED_OFFLINE"
 
 
 class ScanRequest(BaseModel):
@@ -49,8 +51,25 @@ class ScanResponse(BaseModel):
     correlation_id: str
 
 
+class ManifestSeedRequest(BaseModel):
+    event_id: str = Field(min_length=3, max_length=128)
+    ticket_numbers: list[str] = Field(min_length=1, max_length=500)
+
+
+class ManifestSeedResponse(BaseModel):
+    event_id: str
+    seeded_count: int
+
+
 _idempotency_lock = Lock()
 _idempotency_responses: dict[str, ScanResponse] = {}
+
+
+@router.post("/manifest/cache", response_model=ManifestSeedResponse)
+def seed_manifest_cache(request: ManifestSeedRequest) -> ManifestSeedResponse:
+    normalized = [ticket.strip().upper() for ticket in request.ticket_numbers if ticket.strip()]
+    get_offline_queue_service().remember_manifest_tickets(event_id=request.event_id, ticket_numbers=normalized)
+    return ManifestSeedResponse(event_id=request.event_id, seeded_count=len(normalized))
 
 
 @router.post("/scan", response_model=ScanResponse)
@@ -71,33 +90,81 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         operation_type = "checkin"
         ticket_number = f"INVALID-{sha1(request.payload.encode('utf-8')).hexdigest()[:12]}"
     else:
+        offline_queue = get_offline_queue_service()
         event_id = parsed.event_id
         block_id = parsed.block_id
         operation_type = parsed.operation_type
         ticket_number = parsed.ticket_number
+        wix_idempotency = sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest()
 
         wix_result = get_wix_client().check_in_ticket(
             event_id=event_id,
             ticket_number=ticket_number,
-            idempotency_key=sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest(),
+            idempotency_key=wix_idempotency,
             correlation_id=correlation_id,
         )
 
-        if wix_result.outcome == "already_checked_in":
+        if wix_result.outcome == "checked_in":
+            offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
+            offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+            status = ScanStatus.checked_in
+            accepted = True
+            reason = wix_result.reason
+            error_code = wix_result.error_code
+            wix_status = wix_result.wix_status
+        elif wix_result.outcome == "already_checked_in":
+            offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
+            offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
             status = ScanStatus.already_checked_in
             accepted = False
             reason = wix_result.reason
             error_code = wix_result.error_code
             wix_status = wix_result.wix_status
-        elif wix_result.outcome in {"rate_limited", "upstream_error", "transient_error", "auth_error"}:
+        elif wix_result.outcome in {"rate_limited", "upstream_error", "transient_error"}:
+            if offline_queue.is_manifest_ticket_known(event_id=event_id, ticket_number=ticket_number):
+                enqueue = offline_queue.enqueue_checkin(
+                    PendingCheckinJob(
+                        event_id=event_id,
+                        ticket_number=ticket_number,
+                        block_id=block_id,
+                        operation_type=operation_type,
+                        idempotency_key=wix_idempotency,
+                        correlation_id=correlation_id,
+                    )
+                )
+                if enqueue.enqueued:
+                    status = ScanStatus.queued_offline
+                    accepted = True
+                    reason = "Ticket validado localmente. Check-in encolado para sincronizacion."
+                    error_code = "QUEUED_OFFLINE"
+                    wix_status = "queued_offline"
+                elif enqueue.reason == "already_processed":
+                    status = ScanStatus.already_checked_in
+                    accepted = False
+                    reason = "Ticket ya procesado previamente."
+                    error_code = "ALREADY_CHECKED_IN"
+                    wix_status = "duplicate"
+                else:
+                    status = ScanStatus.queued_offline
+                    accepted = True
+                    reason = "Ticket ya en cola offline."
+                    error_code = "ALREADY_QUEUED"
+                    wix_status = "queued_offline"
+            else:
+                status = ScanStatus.invalid_ticket
+                accepted = False
+                reason = "No se encontro ticket en cache local para operar offline."
+                error_code = wix_result.error_code
+                wix_status = wix_result.wix_status
+        elif wix_result.outcome in {"auth_error"}:
             status = ScanStatus.invalid_ticket
             accepted = False
             reason = wix_result.reason
             error_code = wix_result.error_code
             wix_status = wix_result.wix_status
         else:
-            status = ScanStatus.checked_in if wix_result.outcome == "checked_in" else ScanStatus.invalid_ticket
-            accepted = wix_result.outcome == "checked_in"
+            status = ScanStatus.invalid_ticket
+            accepted = False
             reason = wix_result.reason
             error_code = wix_result.error_code
             wix_status = wix_result.wix_status

@@ -3,8 +3,16 @@ from __future__ import annotations
 from time import time
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app.main import app
+from app.services.offline_queue import get_offline_queue_service
+from app.services.wix_client import WixCheckinResult
+
+
+@pytest.fixture(autouse=True)
+def _reset_offline_queue_state() -> None:
+    get_offline_queue_service().reset_for_tests()
 
 
 # ---------------------------------------------------------------------------
@@ -488,4 +496,105 @@ def test_scan_parses_wix_events_url_format() -> None:
     assert body["ticket_number"] == "30CS-1G2K-1NH1P"
     assert body["event_id"] == "1d00a095-6f73-4311-a3dc-80a5fd6eaa99"
     assert body["accepted"] is True
+
+
+# ---------------------------------------------------------------------------
+# P1-US-05 — Redis offline queue and dedupe safeguards
+# ---------------------------------------------------------------------------
+
+
+def test_scan_wix_unavailable_known_ticket_returns_queued_offline() -> None:
+    client = TestClient(app)
+    event_id = "evt-offline-1"
+    ticket = "RATE-KNOWN-1"
+
+    seed_response = client.post(
+        "/api/checkins/manifest/cache",
+        json={"event_id": event_id, "ticket_numbers": [ticket]},
+    )
+    assert seed_response.status_code == 200
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": f"eventId={event_id};ticketNumber={ticket}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "QUEUED_OFFLINE"
+    assert body["accepted"] is True
+    assert body["error_code"] == "QUEUED_OFFLINE"
+    assert get_offline_queue_service().queue_depth() == 1
+
+
+def test_duplicate_offline_scans_not_enqueued_twice() -> None:
+    client = TestClient(app)
+    event_id = "evt-offline-dup"
+    ticket = "RATE-QUEUE-001"
+
+    client.post(
+        "/api/checkins/manifest/cache",
+        json={"event_id": event_id, "ticket_numbers": [ticket]},
+    )
+
+    payload = f"eventId={event_id};ticketNumber={ticket};blockId=main;operationType=checkin"
+    response_one = client.post("/api/checkins/scan", json={"payload": payload})
+    response_two = client.post("/api/checkins/scan", json={"payload": payload})
+
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+    assert response_one.json()["status"] == "QUEUED_OFFLINE"
+    assert response_two.json()["status"] == "QUEUED_OFFLINE"
+    assert get_offline_queue_service().queue_depth() == 1
+
+
+def test_wix_unavailable_unknown_ticket_is_not_queued() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": "eventId=evt-offline-unknown;ticketNumber=RATE-UNKNOWN-1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "INVALID_TICKET"
+    assert body["accepted"] is False
+    assert get_offline_queue_service().queue_depth() == 0
+
+
+def test_worker_replays_queued_items_when_connectivity_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TestClient(app)
+    event_id = "evt-worker-1"
+    ticket = "RATE-WORKER-001"
+
+    client.post(
+        "/api/checkins/manifest/cache",
+        json={"event_id": event_id, "ticket_numbers": [ticket]},
+    )
+
+    enqueue_response = client.post(
+        "/api/checkins/scan",
+        json={"payload": f"eventId={event_id};ticketNumber={ticket}"},
+    )
+    assert enqueue_response.status_code == 200
+    assert enqueue_response.json()["status"] == "QUEUED_OFFLINE"
+
+    class _HealthyWixClient:
+        def check_in_ticket(self, **_: object) -> WixCheckinResult:
+            return WixCheckinResult(
+                outcome="checked_in",
+                wix_status="checked_in",
+                reason=None,
+                error_code="",
+                attempts=1,
+                http_status=200,
+            )
+
+    monkeypatch.setattr("app.services.offline_queue.get_wix_client", lambda: _HealthyWixClient())
+
+    processed = get_offline_queue_service().process_pending_once(max_items=5)
+    assert processed == 1
+    assert get_offline_queue_service().queue_depth() == 0
+    assert get_offline_queue_service().is_processed(event_id=event_id, ticket_number=ticket)
 

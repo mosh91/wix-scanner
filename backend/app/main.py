@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.services.offline_queue import get_offline_queue_service
 from app.middleware.request_timing import RequestTimingMiddleware
 from app.services.scan_runtime import scan_runtime_store
 
@@ -20,15 +21,29 @@ async def _cleanup_loop() -> None:
         scan_runtime_store.cleanup_old_metrics()
 
 
+async def _offline_queue_worker_loop() -> None:
+    interval = max(1, get_settings().offline_queue_worker_interval_s)
+    queue_service = get_offline_queue_service()
+    while True:
+        await asyncio.sleep(interval)
+        queue_service.process_pending_once(max_items=20)
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    task = asyncio.create_task(_cleanup_loop())
+    cleanup_task = asyncio.create_task(_cleanup_loop())
+    queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())
     try:
         yield
     finally:
-        task.cancel()
+        cleanup_task.cancel()
+        queue_worker_task.cancel()
         try:
-            await task
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await queue_worker_task
         except asyncio.CancelledError:
             pass
 

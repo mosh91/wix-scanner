@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150
     wix_retry_max_ms: int = 1500
+    redis_url: str = "redis://redis:6379/0"
+    redis_key_prefix: str = "wix-scanner"
+    pending_marker_ttl_s: int = 86400
+    manifest_cache_ttl_s: int = 86400
+    offline_queue_max_attempts: int = 5
+    offline_queue_worker_interval_s: int = 2
 
     model_config = SettingsConfigDict(
         env_file=".env",
