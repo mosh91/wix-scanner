@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     # Secret used to sign and verify bootstrap QR payloads.
     # Must be set to a strong random value in production.
     bootstrap_secret: str = "dev-bootstrap-secret-change-in-production"
+    wix_mock_mode: bool = True
+    wix_base_url: str = "https://www.wixapis.com"
+    wix_checkin_path: str = "/events/v1/tickets/check-in"
+    wix_api_token: str = ""
+    wix_timeout_ms: int = 2500
+    wix_max_retries: int = 3
+    wix_retry_base_ms: int = 150
+    wix_retry_max_ms: int = 1500
 
     model_config = SettingsConfigDict(
         env_file=".env",

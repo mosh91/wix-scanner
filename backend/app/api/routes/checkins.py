@@ -3,12 +3,14 @@ from __future__ import annotations
 from enum import Enum
 from hashlib import sha1
 from threading import Lock
+from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.qr_parser import QRParseError, parse_qr_payload
 from app.services.scan_runtime import scan_runtime_store
+from app.services.wix_client import get_wix_client
 
 router = APIRouter(prefix="/checkins")
 
@@ -44,6 +46,7 @@ class ScanResponse(BaseModel):
     wix_status: str
     response_time_ms: int
     idempotency_key: str
+    correlation_id: str
 
 
 _idempotency_lock = Lock()
@@ -51,8 +54,9 @@ _idempotency_responses: dict[str, ScanResponse] = {}
 
 
 @router.post("/scan", response_model=ScanResponse)
-def scan_ticket(request: ScanRequest) -> ScanResponse:
+def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(default=None)) -> ScanResponse:
     started_at = scan_runtime_store.start_request()
+    correlation_id = x_correlation_id or str(uuid4())
 
     try:
         parsed = parse_qr_payload(request.payload, active_event_id=request.active_event_id)
@@ -72,18 +76,31 @@ def scan_ticket(request: ScanRequest) -> ScanResponse:
         operation_type = parsed.operation_type
         ticket_number = parsed.ticket_number
 
-        if "DUP" in ticket_number:
+        wix_result = get_wix_client().check_in_ticket(
+            event_id=event_id,
+            ticket_number=ticket_number,
+            idempotency_key=sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest(),
+            correlation_id=correlation_id,
+        )
+
+        if wix_result.outcome == "already_checked_in":
             status = ScanStatus.already_checked_in
             accepted = False
-            reason = "Ticket ya procesado"
-            error_code = "ALREADY_CHECKED_IN"
-            wix_status = "duplicate"
+            reason = wix_result.reason
+            error_code = wix_result.error_code
+            wix_status = wix_result.wix_status
+        elif wix_result.outcome in {"rate_limited", "upstream_error", "transient_error", "auth_error"}:
+            status = ScanStatus.invalid_ticket
+            accepted = False
+            reason = wix_result.reason
+            error_code = wix_result.error_code
+            wix_status = wix_result.wix_status
         else:
-            status = ScanStatus.checked_in
-            accepted = True
-            reason = None
-            error_code = ""
-            wix_status = "checked_in"
+            status = ScanStatus.checked_in if wix_result.outcome == "checked_in" else ScanStatus.invalid_ticket
+            accepted = wix_result.outcome == "checked_in"
+            reason = wix_result.reason
+            error_code = wix_result.error_code
+            wix_status = wix_result.wix_status
 
     idempotency_seed = f"{event_id}:{ticket_number}:{block_id}:{operation_type}"
     idempotency_key = sha1(idempotency_seed.encode("utf-8")).hexdigest()
@@ -120,6 +137,7 @@ def scan_ticket(request: ScanRequest) -> ScanResponse:
         wix_status=wix_status,
         response_time_ms=latency_ms,
         idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
     )
 
     with _idempotency_lock:

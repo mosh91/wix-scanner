@@ -425,3 +425,67 @@ def test_scan_identical_requests_reuse_same_idempotency_result() -> None:
     assert body_one["ticket_number"] == body_two["ticket_number"]
     assert body_one["event_id"] == body_two["event_id"]
 
+
+# ---------------------------------------------------------------------------
+# P1-US-04 — Wix ticket check-in integration
+# ---------------------------------------------------------------------------
+
+
+def test_scan_forwards_correlation_id_in_response() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        headers={"X-Correlation-ID": "corr-test-123"},
+        json={"payload": "eventId=evt-corr;ticketNumber=tkt-corr-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["correlation_id"] == "corr-test-123"
+
+
+def test_scan_maps_wix_already_checked_in_to_internal_status() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": "eventId=evt-dup;ticketNumber=dup-ticket-1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ALREADY_CHECKED_IN"
+    assert body["error_code"] == "ALREADY_CHECKED_IN"
+
+
+def test_scan_classifies_wix_rate_limit_failures() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": "eventId=evt-rate;ticketNumber=rate-ticket-1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "INVALID_TICKET"
+    assert body["error_code"] == "WIX_RATE_LIMITED"
+
+
+def test_scan_parses_wix_events_url_format() -> None:
+    """Wix Events check-in URL format should be parsed correctly: https://www.wixevents.com/check-in/{ticketNumber},{eventId}"""
+    client = TestClient(app)
+
+    url = "https://www.wixevents.com/check-in/30CS-1G2K-1NH1P,1d00a095-6f73-4311-a3dc-80a5fd6eaa99"
+    response = client.post(
+        "/api/checkins/scan",
+        json={"payload": url},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "CHECKED_IN"
+    assert body["ticket_number"] == "30CS-1G2K-1NH1P"
+    assert body["event_id"] == "1d00a095-6f73-4311-a3dc-80a5fd6eaa99"
+    assert body["accepted"] is True
+

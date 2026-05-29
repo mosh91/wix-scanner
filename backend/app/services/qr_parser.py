@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 
 class QRParseError(ValueError):
@@ -69,6 +70,47 @@ def _pick_first(data: dict[str, str], keys: tuple[str, ...]) -> str | None:
     return None
 
 
+def _extract_from_wix_events_url(payload: str) -> dict[str, str] | None:
+    """Parse Wix Events check-in URL format: https://www.wixevents.com/check-in/{ticketNumber},{eventId}"""
+    text = payload.strip()
+    if "wixevents.com" not in text.lower() or "check-in" not in text.lower():
+        return None
+    
+    try:
+        parsed_url = urlparse(text)
+        path = parsed_url.path
+        
+        # Expected format: /check-in/{ticketNumber},{eventId}
+        if "check-in" not in path:
+            return None
+        
+        # Extract everything after /check-in/
+        parts = path.split("check-in/")
+        if len(parts) < 2:
+            return None
+        
+        check_in_part = parts[1].strip("/").strip()
+        if not check_in_part or "," not in check_in_part:
+            return None
+        
+        ticket_and_event = check_in_part.split(",")
+        if len(ticket_and_event) != 2:
+            return None
+        
+        ticket_number = ticket_and_event[0].strip()
+        event_id = ticket_and_event[1].strip()
+        
+        if not ticket_number or not event_id:
+            return None
+        
+        return {
+            "ticketNumber": ticket_number,
+            "eventId": event_id,
+        }
+    except Exception:
+        return None
+
+
 def parse_qr_payload(payload: str, active_event_id: str | None = None) -> ParsedQRPayload:
     text = payload.strip()
     if not text:
@@ -77,7 +119,8 @@ def parse_qr_payload(payload: str, active_event_id: str | None = None) -> Parsed
     if "INVALID" in text.upper():
         raise QRParseError("Formato de ticket no valido.")
 
-    data = _extract_from_json(text) or _extract_from_delimited(text) or {}
+    # Try Wix Events URL format first, then JSON, then delimited, then fallback to raw
+    data = _extract_from_wix_events_url(text) or _extract_from_json(text) or _extract_from_delimited(text) or {}
 
     event_id = _pick_first(data, ("eventId", "event_id", "event", "evt", "EVT")) or active_event_id or "demo-event"
     ticket_number = _pick_first(

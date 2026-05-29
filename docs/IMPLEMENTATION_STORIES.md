@@ -199,31 +199,35 @@ Tasks:
 - [x] Validate eventId/ticketNumber extraction and reject malformed payloads.
 - [x] Add idempotency key generation (`eventId + ticketNumber + blockId + operationType`).
 - [x] Return normalized status codes for frontend display.
+- [x] Support Wix Events URL format: `https://www.wixevents.com/check-in/{ticketNumber},{eventId}`.
 
 Acceptance criteria:
 - Given a valid QR payload, when `/api/checkins/scan` is called, then ticketNumber and event context are parsed correctly.
+- Given a Wix Events check-in URL, when scanned, then ticketNumber and eventId are correctly extracted from `{ticketNumber},{eventId}` format.
 - Given malformed input, when parsing fails, then the API returns `INVALID_TICKET` with a clear error reason.
 - Given repeated identical requests, when idempotency key matches, then backend returns consistent non-duplicative behavior.
 
 ---
 
 ### Story P1-US-04: Wix ticket check-in integration
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As the system, I want to call Wix ticket check-in APIs so successful scans update Wix as source of truth.
 
 Tasks:
-- Implement Wix client service with timeout, retry, and jitter strategy.
-- Integrate check-in endpoint call for valid scan requests.
-- Map Wix responses to internal status model.
-- Implement safe handling for Wix 4xx/5xx/rate-limit responses.
-- Add correlation IDs for request tracing.
+- [x] Implement Wix client service with timeout, retry, and jitter strategy.
+- [x] Integrate check-in endpoint call for valid scan requests (POST https://www.wixapis.com/events/v1/tickets/check-in).
+- [x] Send ticketNumber as Array<string> per Wix Events API contract.
+- [x] Map Wix responses to internal status model.
+- [x] Implement safe handling for Wix 4xx/5xx/rate-limit responses.
+- [x] Add correlation IDs for request tracing.
 
 Acceptance criteria:
-- Given a valid ticket and healthy Wix API, when check-in is submitted, then Wix is updated and API returns `CHECKED_IN`.
-- Given Wix rate limit responses, when retries are attempted, then backoff is applied and failures are classified correctly.
-- Given a ticket already checked in at source, when check-in is attempted, then API returns `ALREADY_CHECKED_IN`.
+- Given a valid ticket and healthy Wix API, when check-in is submitted to POST /events/v1/tickets/check-in with ticketNumber as array, then Wix is updated and API returns `CHECKED_IN`.
+- Given Wix rate limit responses (429), when retries are attempted, then backoff is applied and failures are classified correctly.
+- Given a ticket already checked in at source, when check-in is attempted, then Wix returns 409 and API returns `ALREADY_CHECKED_IN`.
+- Given Wix Events check-in URL parsed by scanner (format: https://www.wixevents.com/check-in/{ticketNumber},{eventId}), when operator screen displays result, then extracted ticketNumber and eventId are shown correctly.
 
 ---
 
