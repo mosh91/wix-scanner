@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { ScanBarcode, ShieldCheck, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,15 @@ const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
 
 export default function App() {
   const { t, i18n } = useTranslation();
+  const location = useLocation();
+
+  if (location.pathname === "/operator") {
+    return (
+      <Routes>
+        <Route path="/operator" element={<OperatorPage />} />
+      </Routes>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

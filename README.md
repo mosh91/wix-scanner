@@ -60,18 +60,18 @@ For local development, run the full backend/frontend stack with Docker Compose.
 
 Compose file:
 
-- [infra/docker/docker-compose.dev.yml](infra/docker/docker-compose.dev.yml)
+- [infra/wix_scanner/docker-compose.dev.yml](infra/wix_scanner/docker-compose.dev.yml)
 
 Start local infrastructure:
 
 ```bash
-docker compose -f infra/docker/docker-compose.dev.yml up -d --build
+docker compose -f infra/wix_scanner/docker-compose.dev.yml up -d --build
 ```
 
 Stop local infrastructure:
 
 ```bash
-docker compose -f infra/docker/docker-compose.dev.yml down
+docker compose -f infra/wix_scanner/docker-compose.dev.yml down
 ```
 
 Notes:

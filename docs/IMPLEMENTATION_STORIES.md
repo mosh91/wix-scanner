@@ -78,49 +78,49 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-02: HID scanner capture on operator screen
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a check-in operator, I want scanner input captured reliably so I can scan tickets quickly without manual typing.
 
 Tasks:
-- Build Operator Check-In screen implementing the 3-state full-screen kiosk UI (Idle / Success / Error) using shadcn `Card`, Tailwind full-viewport classes, and text sizes `text-5xl` or larger for kiosk readability at one metre distance.
-- Implement a global `useHIDScanner` hook that attaches a `keydown` listener on `window`. HID scanners emit keyboard characters at burst speed and send `Enter` as the terminator. The global hook captures input regardless of focus state — no hidden input field or focus watchdog is needed.
-- Buffer incoming characters in the hook, flush on `Enter` (configurable terminator key), and apply a short debounce (50 ms default) to coalesce scanner burst input.
-- Validate payload length and character set before dispatching to the API.
-- **Idle state:** dark/deep-blue full-screen background, `animate-pulse` ring around scan icon, message `"Por favor, acerque su código QR o Ticket al escáner"`.
-- **Success state:** `bg-emerald-500` full-screen, giant `CheckCircle` icon, text `"¡ACCESO CONCEDIDO!"` at `text-7xl`, auto-returns to Idle after 2.5 s. Optionally display ticket number below.
-- **Error state:** `bg-rose-600` full-screen, giant alert icon, text `"TICKET INVÁLIDO o YA PROCESADO"` at `text-7xl`, specific rejection reason below, auto-returns to Idle after 3 s or on next scan.
-- Show a neutral "processing" overlay only if API response exceeds 300 ms.
-- Use Sonner `toast` for secondary operator notifications (e.g. offline queue warning, scanner disconnected) that do not need to block the full screen.
-- Add configurable debounce and max payload length validation.
-- **Implement WebHID API integration for scanner detection and health**:
-  - Use WebHID API to enumerate and detect connected USB HID scanner devices.
-  - Request user permission to access scanner device on first use (browser security model).
-  - Monitor device connection/disconnection events in real-time.
-  - Implement device health check: send test request to scanner to verify responsiveness.
-  - Handle graceful fallback if WebHID is unavailable (keyboard input as fallback).
-  - Store permitted device IDs in browser storage for seamless reconnection.
-- **Add real-time health status indicators to scanner screen**:
-  - Scanner USB connection status via WebHID (connected/disconnected badge with vendor/model info if available)
-  - Scanner device health indicator (responding/unresponsive based on device comms)
-  - Input focus state indicator (visual feedback showing focus is active)
-  - Backend connectivity status (green/yellow/red indicator with last check timestamp)
-  - WebSocket connection status (if applicable, showing real-time sync state)
-- **Implement response metrics display**:
-  - Current response time display (last request latency in ms)
-  - Response time history (last 10-20 responses with min/max/average)
-  - Success/error rate indicator (e.g., "98% success last hour")
-- **Add metrics collection service**:
-  - Collect response time, timestamp, success/failure status for each scan
-  - Track concurrent request count
-  - Persist scan metrics to backend DB for later analysis
-  - Include scanner session metadata (session ID, operator info)
- - **Display current and recent scan history**:
-   - Show prominently the current/last scanned ticket number on the operator screen.
-   - Maintain and display a rolling list of the last 25 scanned ticket numbers with status (success/error/duplicate).
-   - Include timestamps and result status for each recent ticket in the history list.
-   - Allow operator to click history items to view detailed scan info (response time, Wix status, etc.).
+- [x] Build Operator Check-In screen implementing the 3-state full-screen kiosk UI (Idle / Success / Error) using shadcn `Card`, Tailwind full-viewport classes, and text sizes `text-5xl` or larger for kiosk readability at one metre distance.
+- [x] Implement a global `useHIDScanner` hook that attaches a `keydown` listener on `window`. HID scanners emit keyboard characters at burst speed and send `Enter` as the terminator. The global hook captures input regardless of focus state — no hidden input field or focus watchdog is needed.
+- [x] Buffer incoming characters in the hook, flush on `Enter` (configurable terminator key), and apply a short debounce (50 ms default) to coalesce scanner burst input.
+- [x] Validate payload length and character set before dispatching to the API.
+- [x] **Idle state:** dark/deep-blue full-screen background, `animate-pulse` ring around scan icon, message `"Por favor, acerque su código QR o Ticket al escáner"`.
+- [x] **Success state:** `bg-emerald-500` full-screen, giant `CheckCircle` icon, text `"¡ACCESO CONCEDIDO!"` at `text-7xl`, auto-returns to Idle after 2.5 s. Optionally display ticket number below.
+- [x] **Error state:** `bg-rose-600` full-screen, giant alert icon, text `"TICKET INVÁLIDO o YA PROCESADO"` at `text-7xl`, specific rejection reason below, auto-returns to Idle after 3 s or on next scan.
+- [x] Show a neutral "processing" overlay only if API response exceeds 300 ms.
+- [x] Use Sonner `toast` for secondary operator notifications (e.g. offline queue warning, scanner disconnected) that do not need to block the full screen.
+- [x] Add configurable debounce and max payload length validation.
+- [x] **Implement WebHID API integration for scanner detection and health**:
+  - [x] Use WebHID API to enumerate and detect connected USB HID scanner devices.
+  - [x] Request user permission to access scanner device on first use (browser security model).
+  - [x] Monitor device connection/disconnection events in real-time.
+  - [x] Implement device health check: send test request to scanner to verify responsiveness.
+  - [x] Handle graceful fallback if WebHID is unavailable (keyboard input as fallback).
+  - [x] Store permitted device IDs in browser storage for seamless reconnection.
+- [x] **Add real-time health status indicators to scanner screen**:
+  - [x] Scanner USB connection status via WebHID (connected/disconnected badge with vendor/model info if available)
+  - [x] Scanner device health indicator (responding/unresponsive based on device comms)
+  - [x] Input focus state indicator (visual feedback showing focus is active)
+  - [x] Backend connectivity status (green/yellow/red indicator with last check timestamp)
+  - [x] WebSocket connection status (if applicable, showing real-time sync state)
+- [x] **Implement response metrics display**:
+  - [x] Current response time display (last request latency in ms)
+  - [x] Response time history (last 10-20 responses with min/max/average)
+  - [x] Success/error rate indicator (e.g., "98% success last hour")
+- [x] **Add metrics collection service**:
+  - [x] Collect response time, timestamp, success/failure status for each scan
+  - [x] Track concurrent request count
+  - [x] Persist scan metrics to backend DB for later analysis
+  - [x] Include scanner session metadata (session ID, operator info)
+- [x] **Display current and recent scan history**:
+  - [x] Show prominently the current/last scanned ticket number on the operator screen.
+  - [x] Maintain and display a rolling list of the last 25 scanned ticket numbers with status (success/error/duplicate).
+  - [x] Include timestamps and result status for each recent ticket in the history list.
+  - [x] Allow operator to click history items to view detailed scan info (response time, Wix status, etc.).
 
 Acceptance criteria:
 - Given the Operator screen is active, when a scanner sends QR text ending with Enter, then one scan payload is submitted.
@@ -143,19 +143,19 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-02b: Backend metrics schema and real-time health API
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an operator and system, I want structured metrics collection and a health API so scanner performance can be monitored and analyzed.
 
 Tasks:
-- Design and implement ScanMetric database schema with fields: timestamp, session_id, operator_id, response_time_ms, latency_percentile, success_status, error_code, concurrent_count, scanner_status.
-- Create `/api/health/scanner` endpoint returning current backend connectivity, response time stats (last 100 requests), and system health.
-- Implement metrics middleware to intercept scan requests and log timing/status/concurrency.
-- Implement metrics aggregation service for real-time calculations (min/max/avg latency, success rate).
-- Add WebSocket endpoint `/ws/health` for real-time health status push if frontend requests live updates (fallback to polling endpoint).
-- Implement metrics cleanup/archival policy (e.g., keep high-detail metrics for 24h, aggregate for 30d).
-- Add metrics query endpoint `/api/metrics/scans` with filters (date_range, operator_id, session_id) for analysis.
+- [x] Design and implement ScanMetric database schema with fields: timestamp, session_id, operator_id, response_time_ms, latency_percentile, success_status, error_code, concurrent_count, scanner_status.
+- [x] Create `/api/health/scanner` endpoint returning current backend connectivity, response time stats (last 100 requests), and system health.
+- [x] Implement metrics middleware to intercept scan requests and log timing/status/concurrency.
+- [x] Implement metrics aggregation service for real-time calculations (min/max/avg latency, success rate).
+- [x] Add WebSocket endpoint `/ws/health` for real-time health status push if frontend requests live updates (fallback to polling endpoint).
+- [x] Implement metrics cleanup/archival policy (e.g., keep high-detail metrics for 24h, aggregate for 30d).
+- [x] Add metrics query endpoint `/api/metrics/scans` with filters (date_range, operator_id, session_id) for analysis.
 
 Acceptance criteria:
 - Given a scan request completes, when metrics middleware runs, then latency and status are recorded in ScanMetric table.

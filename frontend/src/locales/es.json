@@ -18,8 +18,51 @@
     "toastButton": "Mostrar aviso"
   },
   "operator": {
-    "title": "Plantilla de pantalla del operador",
-    "description": "Esta ruta ya está preparada para la UI de kiosco y el flujo del escáner."
+    "title": "Pantalla del operador",
+    "description": "Esta ruta ya está preparada para la UI de kiosco y el flujo del escáner.",
+    "idleMessage": "Por favor, acerque su código QR o Ticket al escáner",
+    "successMessage": "¡ACCESO CONCEDIDO!",
+    "errorMessage": "TICKET INVÁLIDO o YA PROCESADO",
+    "processing": "Procesando...",
+    "currentTicket": "Ticket actual",
+    "healthTitle": "Salud en tiempo real",
+    "healthDescription": "Estado de scanner, enfoque y backend",
+    "metricsTitle": "Metricas de respuesta",
+    "historyTitle": "Ultimos 25 escaneos",
+    "emptyHistory": "Aun no hay escaneos en la sesion",
+    "grantPermission": "Permitir scanner",
+    "focusLost": "La ventana perdio foco. Mantenga la pantalla del operador activa.",
+    "scannerDisconnected": "Scanner desconectado o sin permiso.",
+    "webhidUnavailable": "WebHID no esta disponible. Usando captura por teclado como fallback.",
+    "backendDegraded": "Backend degradado. Revise conectividad.",
+    "offlineQueued": "Sin conexion. Escaneo marcado para cola offline.",
+    "health": {
+      "usb": "USB scanner",
+      "device": "Salud del dispositivo",
+      "focus": "Foco de entrada",
+      "backend": "Conectividad backend",
+      "websocket": "Conexion WebSocket",
+      "remembered": "Dispositivos recordados"
+    },
+    "metrics": {
+      "lastMs": "Ultima latencia",
+      "min": "Minimo",
+      "max": "Maximo",
+      "avg": "Promedio",
+      "successRate": "Tasa de exito"
+    },
+    "detail": {
+      "status": "Resultado",
+      "response": "Tiempo de respuesta",
+      "time": "Hora",
+      "wix": "Estado Wix",
+      "errorCode": "Código de error",
+      "error": "Detalle"
+    },
+    "validation": {
+      "maxLength": "Payload del scanner demasiado largo.",
+      "invalidCharset": "El payload del scanner contiene caracteres no permitidos."
+    }
   },
   "toasts": {
     "welcome": "Sonner ya está listo para notificaciones del operador."

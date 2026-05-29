@@ -1,4 +1,4 @@
-COMPOSE_FILE=infra/docker/docker-compose.dev.yml
+COMPOSE_FILE=infra/wix_scanner/docker-compose.dev.yml
 
 .PHONY: dev-infra down-infra dev-backend dev-frontend test-backend test-frontend lint-backend lint-frontend format-backend format-frontend dev
 

@@ -18,8 +18,51 @@
     "toastButton": "Show toast"
   },
   "operator": {
-    "title": "Operator screen placeholder",
-    "description": "This route is ready for the kiosk UI and scanner workflow."
+    "title": "Operator screen",
+    "description": "This route is ready for the kiosk UI and scanner workflow.",
+    "idleMessage": "Please present your QR code or ticket to the scanner",
+    "successMessage": "Access granted",
+    "errorMessage": "Invalid or already processed ticket",
+    "processing": "Processing...",
+    "currentTicket": "Current ticket",
+    "healthTitle": "Real-time health",
+    "healthDescription": "Scanner, focus, and backend status",
+    "metricsTitle": "Response metrics",
+    "historyTitle": "Last 25 scans",
+    "emptyHistory": "No scans in this session yet",
+    "grantPermission": "Grant scanner access",
+    "focusLost": "Window focus was lost. Keep operator screen active.",
+    "scannerDisconnected": "Scanner disconnected or missing permission.",
+    "webhidUnavailable": "WebHID is unavailable. Keyboard capture fallback is active.",
+    "backendDegraded": "Backend is degraded. Check connectivity.",
+    "offlineQueued": "Backend unavailable. Scan marked as offline queue.",
+    "health": {
+      "usb": "USB scanner",
+      "device": "Device health",
+      "focus": "Input focus",
+      "backend": "Backend connectivity",
+      "websocket": "WebSocket connection",
+      "remembered": "Remembered devices"
+    },
+    "metrics": {
+      "lastMs": "Last latency",
+      "min": "Min",
+      "max": "Max",
+      "avg": "Average",
+      "successRate": "Success rate"
+    },
+    "detail": {
+      "status": "Result",
+      "response": "Response time",
+      "time": "Time",
+      "wix": "Wix status",
+      "errorCode": "Error code",
+      "error": "Detail"
+    },
+    "validation": {
+      "maxLength": "Scanner payload is too long.",
+      "invalidCharset": "Scanner payload contains unsupported characters."
+    }
   },
   "toasts": {
     "welcome": "Sonner is ready for operator notifications."
