@@ -1,6 +1,13 @@
 -- Wix Scanner canonical PostgreSQL schema
 -- Source: README + IMPLEMENTATION_STORIES
 -- Target: PostgreSQL 15+
+--
+-- Phase 1 Wix Integration Additions (New):
+-- - wix_site_event_binding: Verifies event is bound to correct Wix site and app is installed (P1-US-11)
+-- - wix_app_scope: Tracks required OAuth scopes and verification status (P1-US-12)
+-- - credential_lifecycle_state enum: Explicit credential state machine (P1-US-13)
+-- - event_readiness_check: Pre-event validation gate covering binding, credentials, scopes, manifest, cache, worker (P1-US-14)
+-- - reconciliation_state enum + enhanced reconciliation tables: Formal drift contract (P1-US-15)
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -27,6 +34,16 @@ CREATE TYPE backend_health AS ENUM ('green', 'yellow', 'red');
 CREATE TYPE ticket_manifest_state AS ENUM ('active', 'checked_in', 'cancelled', 'void', 'stale');
 CREATE TYPE credential_audit_action AS ENUM ('create', 'update', 'rotate', 'test', 'refresh', 'read_denied');
 CREATE TYPE action_outcome AS ENUM ('success', 'failure');
+-- New: Credential lifecycle states (P1-US-13)
+CREATE TYPE credential_lifecycle_state AS ENUM ('created', 'validated', 'active', 'expiring_soon', 'rotation_pending', 'revoked', 'failed');
+-- New: Binding verification status (P1-US-11)
+CREATE TYPE binding_status AS ENUM ('pending', 'verified', 'unverified', 'revoked');
+-- New: App installation status (P1-US-11)
+CREATE TYPE app_installation_status AS ENUM ('pending_install', 'installed', 'uninstalled', 'failed');
+-- New: Event readiness status (P1-US-14)
+CREATE TYPE event_readiness_status AS ENUM ('ready', 'degraded', 'critical');
+-- New: Reconciliation state machine (P1-US-15)
+CREATE TYPE reconciliation_state AS ENUM ('in_sync', 'local_pending', 'local_only', 'wix_only', 'conflict');
 
 -- ===== Users / RBAC =====
 CREATE TABLE app_user (
@@ -86,6 +103,46 @@ CREATE TABLE event_config_version (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT event_config_version_unique UNIQUE (event_id, version_number)
 );
+
+-- ===== Wix site-event binding verification (P1-US-11) =====
+CREATE TABLE wix_site_event_binding (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+  wix_site_id TEXT NOT NULL,
+  wix_event_id TEXT NOT NULL,
+  binding_id TEXT,
+  status binding_status NOT NULL DEFAULT 'pending',
+  app_installation_status app_installation_status NOT NULL DEFAULT 'pending_install',
+  binding_verified_at TIMESTAMPTZ,
+  scopes_verified_at TIMESTAMPTZ,
+  last_verification_error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_by UUID REFERENCES app_user(id),
+  updated_by UUID REFERENCES app_user(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT wix_binding_unique_event UNIQUE (event_id, wix_site_id, wix_event_id)
+);
+
+CREATE INDEX idx_wix_site_event_binding_event_status
+  ON wix_site_event_binding (event_id, status);
+
+-- ===== Wix app scope verification (P1-US-12) =====
+CREATE TABLE wix_app_scope (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  binding_id UUID NOT NULL REFERENCES wix_site_event_binding(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL,
+  is_required BOOLEAN NOT NULL DEFAULT TRUE,
+  verified_at TIMESTAMPTZ,
+  verification_failed_at TIMESTAMPTZ,
+  failure_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT wix_app_scope_unique UNIQUE (binding_id, scope)
+);
+
+CREATE INDEX idx_wix_app_scope_binding_verified
+  ON wix_app_scope (binding_id, verified_at DESC);
 
 CREATE TABLE event_ticket_manifest (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -273,8 +330,10 @@ CREATE TABLE reconciliation_run (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   status run_status NOT NULL DEFAULT 'running',
+  reconciliation_state reconciliation_state NOT NULL DEFAULT 'in_sync',
   drift_count INTEGER NOT NULL DEFAULT 0,
   resolved_count INTEGER NOT NULL DEFAULT 0,
+  conflict_count INTEGER NOT NULL DEFAULT 0,
   started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   finished_at TIMESTAMPTZ,
   triggered_by UUID REFERENCES app_user(id),
@@ -286,17 +345,45 @@ CREATE TABLE reconciliation_item (
   run_id UUID NOT NULL REFERENCES reconciliation_run(id) ON DELETE CASCADE,
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   ticket_number TEXT NOT NULL,
+  reconciliation_state reconciliation_state NOT NULL DEFAULT 'in_sync',
   local_result checkin_result,
   wix_result checkin_result,
   resolution_result checkin_result,
   scan_event_id UUID REFERENCES scan_event(id),
   detail JSONB,
-  resolved_at TIMESTAMPTZ
+  resolved_at TIMESTAMPTZ,
+  conflict_resolution_notes TEXT
 );
 
 CREATE INDEX idx_reconciliation_item_run_id ON reconciliation_item (run_id);
 
--- ===== Secret management and audit =====
+-- ===== Event readiness gate (P1-US-14) =====
+CREATE TABLE event_readiness_check (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+  overall_status event_readiness_status NOT NULL DEFAULT 'critical',
+  binding_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  credentials_active BOOLEAN NOT NULL DEFAULT FALSE,
+  scopes_complete BOOLEAN NOT NULL DEFAULT FALSE,
+  manifest_synced BOOLEAN NOT NULL DEFAULT FALSE,
+  cache_warmed BOOLEAN NOT NULL DEFAULT FALSE,
+  worker_responsive BOOLEAN NOT NULL DEFAULT FALSE,
+  relay_healthy BOOLEAN,
+  last_binding_error TEXT,
+  last_credential_error TEXT,
+  last_scope_error TEXT,
+  last_manifest_error TEXT,
+  last_worker_error TEXT,
+  recommendations JSONB NOT NULL DEFAULT '[]'::JSONB,
+  triggered_by UUID REFERENCES app_user(id),
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  valid_until TIMESTAMPTZ
+);
+
+CREATE INDEX idx_event_readiness_check_event_checked_at
+  ON event_readiness_check (event_id, checked_at DESC);
+
+
 CREATE TABLE secret_credential (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -305,6 +392,9 @@ CREATE TABLE secret_credential (
   key_version TEXT NOT NULL,
   metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  lifecycle_state credential_lifecycle_state NOT NULL DEFAULT 'created',
+  last_validated_at TIMESTAMPTZ,
+  validation_error TEXT,
   created_by UUID REFERENCES app_user(id),
   rotated_by UUID REFERENCES app_user(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

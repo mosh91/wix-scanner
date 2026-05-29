@@ -9,6 +9,34 @@ This document turns the project plan into sequential user stories with concrete 
 3. Mark each story as Done only when all acceptance criteria pass.
 4. Link each story to code PRs, tests, and runbook updates.
 
+---
+
+## Critical Additions for Wix Integration (NEW)
+
+This iteration adds **critical Phase 1 and Phase 4B stories** addressing architectural gaps for real Wix event integration. Key areas:
+
+**Phase 1 — Moved Earlier (Stories 11–15):**
+- **P1-US-11:** Site-event binding and app installation verification — prevents auth to wrong accounts.
+- **P1-US-12:** OAuth scope verification — ensures check-in and read permissions are present before go-live.
+- **P1-US-13:** Credential lifecycle state machine — defines auth mode (OAuth vs API key) upfront and enforces consistency.
+- **P1-US-14:** Event readiness gate — automated pre-flight check covering credentials, scopes, ticket cache, and relay health.
+- **P1-US-15:** Reconciliation contract — defines drift states and deterministic conflict resolution with Wix as source of truth.
+
+**Phase 4B — Operational Validation (Stories 01–05):**
+- **P4B-US-01:** Wix MCP integration verification script — repeatable env-specific validation in CI/CD.
+- **P4B-US-02:** Pre-event runbook and checklist — 1-week through post-event operational timeline.
+- **P4B-US-03:** Live event drill — verify recovery from network outage + relay restart with no duplicates.
+- **P4B-US-04:** Credential rotation drill — prove zero-downtime rotation under event load.
+- **P4B-US-05:** Operator incident response training — hands-on guides for common failure scenarios.
+
+**Why These Matter:**
+- Wix integration is high-risk; binding, scope, and auth strategy decisions must be locked in Phase 1 MVp, not discovered later.
+- Reconciliation contract ensures Wix remains source of truth and local queue does not drift indefinitely.
+- Pre-event readiness gate prevents "event day surprises" (expired token, missing scope, stale cache).
+- Operational drills validate the system before real venue usage; "first drill is first failure" risk is unacceptable for ticketed events.
+
+---
+
 ## Story Status Legend
 
 - `Not Started`
@@ -339,6 +367,133 @@ Acceptance criteria:
 - Given valid relay payloads, when backend validates schema and signature, then request is accepted.
 - Given malformed or unsigned payloads, when backend receives them, then requests are rejected with explicit reason.
 - Given protocol version mismatch, when relay sends event, then compatibility behavior is deterministic and logged.
+
+---
+
+### Story P1-US-11: Wix site-event binding and app installation verification
+Status: `Not Started`
+
+User story:
+As a platform administrator, I want clear site-event bindings and app installation verification so the system only uses events from approved Wix sites and prevents auth to wrong accounts.
+
+Tasks:
+- Add WixSiteEventBinding data model with fields: binding_id, wix_site_id, wix_event_id, app_installation_status (pending/verified/revoked), credential_profile_id, sync_policy_profile_id, binding_created_at, binding_verified_at, verified_by_actor.
+- Implement backend endpoint `POST /api/admin/site-event-bindings` to create a binding.
+- Add verification task: query Wix to confirm site exists, event exists, and app is installed on site.
+- Store verification evidence with timestamp and actor.
+- Prevent event activation if binding is unverified.
+- Add UI screen to list, create, and view binding verification status.
+
+Acceptance criteria:
+- Given a new binding, when created, then initial status is pending.
+- Given verification task runs, when binding details are confirmed in Wix, then status transitions to verified and timestamp is recorded.
+- Given app is not installed on the site, when verification runs, then status remains pending and error reason is stored.
+- Given an event is bound to a site, when event activation is attempted, then system checks binding status and rejects if not verified.
+- Given a binding is verified, when querying events, then only events from verified bindings are available.
+
+---
+
+### Story P1-US-12: Wix app scope and permission verification
+Status: `Not Started`
+
+User story:
+As a security administrator, I want to verify that the Wix app has the required OAuth scopes so the system can call check-in and ticket-read APIs without silent authorization failures.
+
+Tasks:
+- Define required OAuth scopes: `tickets:read`, `tickets.check-in:write`, `events:read` (and any other needed scopes).
+- Add scope verification task: query Wix app installation to confirm scopes are present.
+- Store scope audit record (scopes_verified_at, verified_scopes, missing_scopes).
+- Add alert if required scopes are missing or revoked.
+- Add scope re-verification endpoint callable from UI.
+- Add UI indicator showing scope verification status on Integration Status screen.
+
+Acceptance criteria:
+- Given app installation is verified, when scope check runs, then required scopes are queried and compared.
+- Given all required scopes are present, when verification completes, then status is green and no alerts fire.
+- Given a required scope is missing, when verification completes, then missing scope is recorded and UI shows warning.
+- Given scopes are re-verified, when task runs, then most recent verification result is stored.
+- Given missing scopes are later granted, when re-verification is triggered, then status transitions to green.
+
+---
+
+### Story P1-US-13: Credential lifecycle and auth mode decision
+Status: `Not Started`
+
+User story:
+As a platform engineer, I want explicit auth mode selection (OAuth vs API key) and a credential state machine so different environments can use different auth strategies safely.
+
+Tasks:
+- Add Auth Strategy configuration: define decision table showing which endpoints use which auth mode (check-in, ticket-read, event-read, sync).
+- Define Credential lifecycle states: created, validated, active, expiring_soon, rotation_pending, revoked, failed.
+- Add validation job: test credentials against Wix API before marking active.
+- Implement state transitions: created -> validated -> active -> expiring_soon (automated on schedule) or -> rotation_pending (manual).
+- Add backend configuration option to explicitly choose auth mode (OAuth or API Key) per environment.
+- Add validation that production cannot mix modes for the same endpoint.
+- Emit events for credential lifecycle transitions for audit and alerting.
+
+Acceptance criteria:
+- Given auth mode is selected, when documented, then decision rationale (production uses OAuth, staging can use API key) is recorded.
+- Given a credential is created, when initial validation runs, then state transitions to validated if API calls succeed.
+- Given a credential is active and approaching expiry, when TTL check runs, then state transitions to expiring_soon.
+- Given expiring_soon credential, when refresh is attempted, then new credential is issued and old one is revoked.
+- Given mixed mode configuration in production, when validation runs, then system rejects and blocks deployment.
+
+---
+
+### Story P1-US-14: Event readiness gate and pre-event validation
+Status: `Not Started`
+
+User story:
+As an operator, I want an automated event readiness check before doors open so I know all dependencies are healthy.
+
+Tasks:
+- Add Event Readiness Check endpoint `GET /api/admin/events/{eventId}/readiness`.
+- Readiness check includes:
+  - Binding verified for event's site.
+  - Credentials active and not expiring within 1 hour.
+  - Scopes verified and complete.
+  - Ticket manifest synced within last 30 seconds.
+  - Local cache keys warmed in Redis.
+  - Backend connectivity confirmed.
+  - Worker service running and responsive.
+- Return readiness status object: overall_status (ready/degraded/critical), component_statuses, failed_checks, recommended_actions.
+- Add UI readiness dashboard shown during pre-event setup.
+- Block event activation if readiness status is critical.
+- Allow degraded status with operator acknowledgement.
+
+Acceptance criteria:
+- Given all dependencies are healthy, when readiness check runs, then overall_status is ready.
+- Given credentials are expiring soon, when readiness check runs, then status is degraded and recommendation to refresh credentials is shown.
+- Given ticket manifest is stale, when readiness check runs, then degraded status is returned.
+- Given critical failures exist, when event activation is attempted, then system rejects with list of required fixes.
+- Given operator acknowledges degraded status, when event activation proceeds, then status is logged for audit.
+
+---
+
+### Story P1-US-15: Reconciliation contract and drift semantics
+Status: `Not Started`
+
+User story:
+As an architect, I want a clear reconciliation protocol so local check-in state can be safely merged with Wix as source of truth without data loss.
+
+Tasks:
+- Define Reconciliation State machine: in_sync, local_pending, local_only, wix_only, conflict.
+- Define drift detection rules: query Wix for event's checked-in tickets, compare against local cache.
+- Define resolution rules: deterministic tiebreaker (Wix wins on mismatches, but local pending items are retried).
+- Implement reconciliation job that:
+  - Fetches Wix checked-in tickets.
+  - Compares against local cache.
+  - Classifies each ticket into one of five states.
+  - Generates reconciliation report with affected ticket counts and resolution actions taken.
+- Add reconciliation conflict console: allow human review and manual override for edge cases.
+- Add manual reconciliation trigger from UI.
+
+Acceptance criteria:
+- Given Wix and local state match, when reconciliation completes, then status is in_sync.
+- Given local check-in is queued but Wix shows not checked in, when reconciliation runs, then ticket is retried.
+- Given Wix shows checked in but local shows not checked in, when reconciliation runs, then local state is updated to match Wix.
+- Given conflict state (both checked in at different times), when reconciliation runs, then deterministic outcome is logged and conflict console flags for review.
+- Given operator manually resolves conflict, when override is applied, then both local state and audit log reflect resolution action and actor.
 
 ---
 
@@ -719,6 +874,132 @@ Acceptance criteria:
 
 ---
 
+## Phase 4B: Wix Integration Verification and Live Event Drills
+
+### Story P4B-US-01: Wix MCP integration verification script
+Status: `Not Started`
+
+User story:
+As a release manager, I want a repeatable verification script using Wix MCP so each environment's integration is formally validated before event day.
+
+Tasks:
+- Create integration verification script (Python + Wix MCP or curl-based) with the following checks:
+  - List Wix sites and confirm target site is present.
+  - Query Wix app installation and confirm status.
+  - Validate app scopes against required list.
+  - Query Wix event and confirm event exists and is in expected state.
+  - Perform read-only ticket query (non-mutating) to confirm API access.
+  - Perform a dry-run check-in call (with idempotency key to ensure no side effect).
+  - Capture all responses and format as verification report.
+- Save report artifact in timestamped log.
+- Make this script runnable in dev/staging/prod-like environments.
+- Return zero exit code only if all checks pass.
+- Add script to CI/CD and staging release gates.
+
+Acceptance criteria:
+- Given the script runs in dev environment, when all dependencies are healthy, then exit code is 0 and report shows green.
+- Given an API key is invalid, when the script runs, then first auth failure is detected and reported with actionable error.
+- Given scopes are missing, when the script runs, then missing scope is clearly listed in report.
+- Given the script is called in CI before release, when any check fails, then release is blocked.
+
+---
+
+### Story P4B-US-02: Pre-event runbook and checklist
+Status: `Not Started`
+
+User story:
+As an operations lead, I want a documented checklist so pre-event setup is repeatable and covers all Wix integration steps.
+
+Tasks:
+- Create Pre-Event Operations Runbook including:
+  - 1 week before: verify credentials expiry, run integration verification script, confirm scopes.
+  - 3 days before: dry-run full event readiness check, confirm ticket manifest sync interval.
+  - 1 day before: run event readiness gate, confirm backend is responding, warm Redis cache.
+  - 2 hours before: final readiness check, confirm relay (if used) is healthy, confirm operator can scan test ticket.
+  - During event: monitor sync lag and queue depth, alert if > thresholds, keep runbook open.
+  - Post-event: reconciliation audit, credential rotation if any were exposed, save logs for analysis.
+- Add pre-event form in UI with checklist items operator can tick off.
+- Add automatic email reminder for pre-event tasks (1 week, 3 days, 1 day before event).
+
+Acceptance criteria:
+- Given pre-event checklist is followed, when event begins, then all systems are confirmed ready.
+- Given credential expiry warning is generated, when followed, then credential is rotated before expiry.
+- Given event readiness check fails, when operator observes runbook, then recommended actions are clear.
+
+---
+
+### Story P4B-US-03: Live event drill: network outage + relay restart + reconciliation
+Status: `Not Started`
+
+User story:
+As a resilience architect, I want a verified drill scenario so we know the system recovers correctly from realistic failure modes.
+
+Tasks:
+- Plan and execute multi-stage drill on staging event:
+  - Stage 1 (network outage): Simulate WAN unavailability for 5 min, confirm scans are queued locally and relay buffers them.
+  - Stage 2 (relay restart): Restart relay service during outage, confirm no queued items are lost.
+  - Stage 3 (recovery and replay): Restore WAN, confirm relay replays queued check-ins to cloud without duplicates.
+  - Stage 4 (reconciliation): Run reconciliation job and confirm final state matches Wix.
+- Measure Mean Time To Recovery (MTTR) and document.
+- Generate drill report with findings and any process improvements.
+- Simulate parallel mobile app check-ins during recovery to test concurrent scenario.
+
+Acceptance criteria:
+- Given outage of 5 min with relay restart, when recovery executes, then all queued check-ins are processed.
+- Given parallel mobile + relay check-ins during recovery, when reconciliation completes, then no duplicate check-ins exist in Wix.
+- Given drill is completed, when report is reviewed, then MTTR is documented and acceptable (<10 min recommended).
+
+---
+
+### Story P4B-US-04: Credential rotation operational drill
+Status: `Not Started`
+
+User story:
+As a security operations lead, I want a verified credential rotation procedure so rotations can be done under pressure without errors.
+
+Tasks:
+- Plan and execute credential rotation drill during event (staging):
+  - Step 1: Generate new credential on Railway backend (env var update or DB change).
+  - Step 2: Confirm old credential is still active and traffic continues.
+  - Step 3: Warm new credential (make test request).
+  - Step 4: Switch active credential (atomic update).
+  - Step 5: Confirm traffic flows with new credential.
+  - Step 6: Monitor for auth errors for 5 min.
+  - Step 7: Revoke old credential.
+- Measure downtime (should be near zero).
+- Document any issues and rollback procedure.
+
+Acceptance criteria:
+- Given credential rotation is executed, when completed, then no check-in requests are dropped.
+- Given old credential is revoked, when auth attempts are made with old key, then requests are rejected.
+- Given rotation drill is completed, when reviewed, then downtime is < 1 minute (ideally zero).
+
+---
+
+### Story P4B-US-05: Operator incident response training
+Status: `Not Started`
+
+User story:
+As a venue operations manager, I want a training runbook so on-site operators know how to handle common incidents.
+
+Tasks:
+- Create Operator Incident Response Guide covering:
+  - "Scanner not detected": check USB connection, reload page, restart browser.
+  - "Backend is down": scan state is queued offline, relay (if present) buffers, wait for recovery.
+  - "Duplicate prevented": operator sees error, scan is not repeated, no action needed.
+  - "Wix API timeout": backend queues request, operator sees "queued offline", check-in continues later.
+  - "Relay heartbeat is stale": relay is degraded, all scans go directly to cloud if internet available.
+  - "Get full readiness report": UI displays readiness dashboard, operator notes any yellow/red items.
+  - "Manual override for pre-checked ticket": deny and explain duplicate prevention, escalate to manager if needed.
+- Add quick-reference cards (1-page summaries) for top incidents.
+- Conduct operator training session before go-live.
+
+Acceptance criteria:
+- Given operator training is completed, when incidents occur, then operator can handle without panic.
+- Given reference cards are available on kiosk desk, when incident happens, then operator has procedural guidance.
+
+---
+
 ## Cross-Cutting Technical Tasks (Apply in All Phases)
 
 ### X-US-01: Structured logging and traceability
@@ -758,26 +1039,36 @@ Acceptance criteria:
 9. P1-US-08
 10. P1-US-09
 11. P1-US-10
-12. P2-US-01
-13. P2-US-02
-14. P2-US-04
-15. P2-US-05
-16. P2-US-06
-17. P2-US-07
-18. P2-US-08
-19. P2-US-09
-20. P2-US-03
-21. P3-US-01
-22. P3-US-02
-23. P3-US-03
-24. P3-US-04
-25. P3-US-05
-26. P4-US-01
-27. P4-US-02
-28. P4-US-03
-29. P4-US-04
-30. P4-US-05
-31. X-US-01 and X-US-02 continuously
+12. **P1-US-11 (NEW: Wix site-event binding)**
+13. **P1-US-12 (NEW: Wix app scope verification)**
+14. **P1-US-13 (NEW: Credential lifecycle & auth mode)**
+15. **P1-US-14 (NEW: Event readiness gate)**
+16. **P1-US-15 (NEW: Reconciliation contract)**
+17. P2-US-01
+18. P2-US-02
+19. P2-US-04
+20. P2-US-05
+21. P2-US-06
+22. P2-US-07
+23. P2-US-08
+24. P2-US-09
+25. P2-US-03
+26. P3-US-01
+27. P3-US-02
+28. P3-US-03
+29. P3-US-04
+30. P3-US-05
+31. P4-US-01
+32. P4-US-02
+33. P4-US-03
+34. P4-US-04
+35. P4-US-05
+36. **P4B-US-01 (NEW: Wix MCP verification script)**
+37. **P4B-US-02 (NEW: Pre-event runbook)**
+38. **P4B-US-03 (NEW: Live event drill)**
+39. **P4B-US-04 (NEW: Credential rotation drill)**
+40. **P4B-US-05 (NEW: Operator incident training)**
+41. X-US-01 and X-US-02 continuously
 
 ## Definition of Done (Global)
 
