@@ -270,6 +270,38 @@ Acceptance criteria:
 
 ---
 
+### Story P1-US-05c: Mobile app check-in webhook and real-time manifest updates
+Status: `Not Started`
+
+User story:
+As the system, I want to receive real-time check-in events from Wix mobile app so the local ticket manifest stays synchronized and duplicate check-ins are prevented at the kiosk.
+
+Tasks:
+- Create webhook endpoint `POST /api/webhooks/wix/checkins` to receive mobile app check-in notifications from Wix.
+- Define webhook payload schema: { ticket_number, wix_ticket_id, wix_event_id, checked_in_at, source: "wix_mobile", wix_request_id }.
+- Implement webhook signature verification (Wix-signed header validation for security).
+- When webhook is received:
+  - Find the corresponding event by wix_event_id.
+  - Look up ticket in event_ticket_manifest by ticket_number.
+  - Update ticket manifest_state to `checked_in` and last_seen_scan_at to webhook timestamp.
+  - Create scan_event record with source `wix_mobile` and result `checked_in`.
+  - Create checkin_record with source tracking.
+  - Emit event to kiosk operator (broadcast to all active sessions for this event).
+- Add retry logic in Wix webhook delivery if your endpoint returns 5xx (Wix will retry automatically).
+- Add webhook endpoint logging and audit trail.
+- Provide UI admin panel to view webhook delivery history and manual webhook retry trigger.
+
+Acceptance criteria:
+- Given Wix mobile app checks in a ticket, when webhook is received, then local ticket manifest is immediately updated to checked_in.
+- Given webhook signature verification fails, when webhook is received, then request is rejected with 401 Unauthorized.
+- Given ticket is checked in via mobile app webhook, when operator scans the same ticket at kiosk, then kiosk detects `already_checked_in` state and displays duplicate message.
+- Given webhook delivery fails due to temporary backend unavailability, when Wix retries, then eventual consistency is achieved and ticket is marked checked in.
+- Given multiple mobile check-ins for same ticket arrive in rapid succession, when webhooks are processed, then only one check-in is recorded (dedupe by ticket_number per event).
+- Given a webhook is received for an unknown event, when processed, then error is logged and webhook is acknowledged to Wix (to prevent retry spam).
+- Given operator views webhook admin panel, when history is displayed, then recent webhook deliveries and their outcomes (success/failure/retry) are visible.
+
+---
+
 ### Story P1-US-06: Credential provider abstraction (env/secrets manager/DB encrypted)
 Status: `Not Started`
 
@@ -1034,41 +1066,43 @@ Acceptance criteria:
 4. P1-US-03
 5. P1-US-04
 6. P1-US-05
-7. P1-US-06
-8. P1-US-07
-9. P1-US-08
-10. P1-US-09
-11. P1-US-10
-12. **P1-US-11 (NEW: Wix site-event binding)**
-13. **P1-US-12 (NEW: Wix app scope verification)**
-14. **P1-US-13 (NEW: Credential lifecycle & auth mode)**
-15. **P1-US-14 (NEW: Event readiness gate)**
-16. **P1-US-15 (NEW: Reconciliation contract)**
-17. P2-US-01
-18. P2-US-02
-19. P2-US-04
-20. P2-US-05
-21. P2-US-06
-22. P2-US-07
-23. P2-US-08
-24. P2-US-09
-25. P2-US-03
-26. P3-US-01
-27. P3-US-02
-28. P3-US-03
-29. P3-US-04
-30. P3-US-05
-31. P4-US-01
-32. P4-US-02
-33. P4-US-03
-34. P4-US-04
-35. P4-US-05
-36. **P4B-US-01 (NEW: Wix MCP verification script)**
-37. **P4B-US-02 (NEW: Pre-event runbook)**
-38. **P4B-US-03 (NEW: Live event drill)**
-39. **P4B-US-04 (NEW: Credential rotation drill)**
-40. **P4B-US-05 (NEW: Operator incident training)**
-41. X-US-01 and X-US-02 continuously
+7. **P1-US-05b (NEW: Ticket manifest sync)**
+8. **P1-US-05c (NEW: Mobile app webhook)**
+9. P1-US-06
+10. P1-US-07
+11. P1-US-08
+12. P1-US-09
+13. P1-US-10
+14. **P1-US-11 (NEW: Wix site-event binding)**
+15. **P1-US-12 (NEW: Wix app scope verification)**
+16. **P1-US-13 (NEW: Credential lifecycle & auth mode)**
+17. **P1-US-14 (NEW: Event readiness gate)**
+18. **P1-US-15 (NEW: Reconciliation contract)**
+19. P2-US-01
+20. P2-US-02
+21. P2-US-04
+22. P2-US-05
+23. P2-US-06
+24. P2-US-07
+25. P2-US-08
+26. P2-US-09
+27. P2-US-03
+28. P3-US-01
+29. P3-US-02
+30. P3-US-03
+31. P3-US-04
+32. P3-US-05
+33. P4-US-01
+34. P4-US-02
+35. P4-US-03
+36. P4-US-04
+37. P4-US-05
+38. **P4B-US-01 (NEW: Wix MCP verification script)**
+39. **P4B-US-02 (NEW: Pre-event runbook)**
+40. **P4B-US-03 (NEW: Live event drill)**
+41. **P4B-US-04 (NEW: Credential rotation drill)**
+42. **P4B-US-05 (NEW: Operator incident training)**
+43. X-US-01 and X-US-02 continuously
 
 ## Definition of Done (Global)
 
