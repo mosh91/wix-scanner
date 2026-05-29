@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.services.qr_parser import QRParseError, parse_qr_payload
 from app.services.offline_queue import PendingCheckinJob, get_offline_queue_service
 from app.services.scan_runtime import scan_runtime_store
+from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.wix_client import get_wix_client
 
 router = APIRouter(prefix="/checkins")
@@ -91,11 +92,13 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         ticket_number = f"INVALID-{sha1(request.payload.encode('utf-8')).hexdigest()[:12]}"
     else:
         offline_queue = get_offline_queue_service()
+        manifest = get_ticket_manifest_service()
         event_id = parsed.event_id
         block_id = parsed.block_id
         operation_type = parsed.operation_type
         ticket_number = parsed.ticket_number
         wix_idempotency = sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest()
+        manifest.track_event(event_id)
 
         wix_result = get_wix_client().check_in_ticket(
             event_id=event_id,
@@ -107,6 +110,7 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         if wix_result.outcome == "checked_in":
             offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
             offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+            manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
             status = ScanStatus.checked_in
             accepted = True
             reason = wix_result.reason
@@ -115,6 +119,7 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         elif wix_result.outcome == "already_checked_in":
             offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
             offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+            manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
             status = ScanStatus.already_checked_in
             accepted = False
             reason = wix_result.reason

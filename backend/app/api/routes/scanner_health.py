@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.services.scan_runtime import scan_runtime_store
+from app.services.ticket_manifest import get_ticket_manifest_service
 
 router = APIRouter(prefix="/health/scanner")
 
@@ -20,6 +21,7 @@ class ScannerHealthResponse(BaseModel):
     p95_ms: float
     p99_ms: float
     last_check_ts: int
+    manifest_cache_stale: bool = True
 
 
 class ScanMetricRecord(BaseModel):
@@ -38,8 +40,12 @@ class ScanMetricRecord(BaseModel):
 
 
 @router.get("", response_model=ScannerHealthResponse)
-def scanner_health() -> ScannerHealthResponse:
+def scanner_health(event_id: str | None = Query(default=None)) -> ScannerHealthResponse:
     summary = scan_runtime_store.metrics_summary()
+    manifest_stale = True
+    if event_id:
+        manifest_stale = get_ticket_manifest_service().status(event_id=event_id).stale
+
     return ScannerHealthResponse(
         backend_status=str(summary["backend_status"] if "backend_status" in summary else summary["status"]),
         in_flight=int(summary["in_flight"]),
@@ -52,6 +58,7 @@ def scanner_health() -> ScannerHealthResponse:
         p95_ms=float(summary["p95_ms"]),
         p99_ms=float(summary["p99_ms"]),
         last_check_ts=int(summary["last_check_ts"]),
+        manifest_cache_stale=manifest_stale,
     )
 
 

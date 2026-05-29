@@ -1,4 +1,4 @@
-export type ScanResultStatus = "CHECKED_IN" | "INVALID_TICKET" | "ALREADY_CHECKED_IN";
+export type ScanResultStatus = "CHECKED_IN" | "INVALID_TICKET" | "ALREADY_CHECKED_IN" | "QUEUED_OFFLINE";
 
 export type ScanResponse = {
   status: ScanResultStatus;
@@ -19,7 +19,11 @@ export type ScannerHealthResponse = {
   min_ms: number;
   max_ms: number;
   avg_ms: number;
+  p50_ms: number;
+  p95_ms: number;
+  p99_ms: number;
   last_check_ts: number;
+  manifest_cache_stale: boolean;
 };
 
 export type ScanSubmitContext = {
@@ -91,8 +95,9 @@ export async function submitScan(payload: string, context: ScanSubmitContext = {
   return (await response.json()) as ScanResponse;
 }
 
-export async function fetchScannerHealth(): Promise<ScannerHealthResponse> {
-  const response = await fetch(`${API_BASE}/health/scanner`);
+export async function fetchScannerHealth(eventId?: string): Promise<ScannerHealthResponse> {
+  const query = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+  const response = await fetch(`${API_BASE}/health/scanner${query}`);
   if (!response.ok) {
     throw new Error(`Health check failed with status ${response.status}`);
   }

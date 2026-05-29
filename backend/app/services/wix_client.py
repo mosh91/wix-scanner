@@ -106,6 +106,65 @@ class WixClient:
             attempts=max_attempts,
         )
 
+    def list_tickets(self, *, event_id: str, limit: int = 100) -> list[dict[str, object]]:
+        if self._settings.wix_mock_mode:
+            return self._mock_list_tickets(event_id=event_id)
+
+        if not self._settings.wix_api_token:
+            raise RuntimeError("Wix API token no configurado.")
+
+        url = f"{self._settings.wix_base_url.rstrip('/')}/events/v1/tickets"
+        headers = {
+            "Authorization": f"Bearer {self._settings.wix_api_token}",
+        }
+
+        offset = 0
+        normalized_limit = max(1, min(limit, 100))
+        output: list[dict[str, object]] = []
+
+        with httpx.Client(timeout=self._settings.wix_timeout_ms / 1000.0) as client:
+            while True:
+                response = client.get(
+                    url,
+                    headers=headers,
+                    params={
+                        "eventId": event_id,
+                        "offset": offset,
+                        "limit": normalized_limit,
+                    },
+                )
+
+                if response.status_code >= 400:
+                    raise RuntimeError(f"Wix list tickets failed with {response.status_code}")
+
+                data = response.json() if response.content else {}
+                tickets = data.get("tickets", []) if isinstance(data, dict) else []
+                if not isinstance(tickets, list):
+                    break
+
+                for ticket in tickets:
+                    if not isinstance(ticket, dict):
+                        continue
+                    ticket_number = str(ticket.get("ticketNumber", "")).strip().upper()
+                    if not ticket_number:
+                        continue
+                    output.append(
+                        {
+                            "ticket_number": ticket_number,
+                            "checked_in": isinstance(ticket.get("checkIn"), dict),
+                        }
+                    )
+
+                total = int(data.get("total", len(output))) if isinstance(data, dict) else len(output)
+                current_limit = int(data.get("limit", normalized_limit)) if isinstance(data, dict) else normalized_limit
+                current_offset = int(data.get("offset", offset)) if isinstance(data, dict) else offset
+                offset = current_offset + current_limit
+
+                if offset >= total or len(tickets) == 0:
+                    break
+
+        return output
+
     def _map_response(self, response: httpx.Response, attempt: int) -> WixCheckinResult:
         if response.status_code in {200, 201}:
             return WixCheckinResult(
@@ -214,6 +273,16 @@ class WixClient:
             attempts=1,
             http_status=201,
         )
+
+    def _mock_list_tickets(self, *, event_id: str) -> list[dict[str, object]]:
+        token = event_id.upper()
+        if "EMPTY" in token:
+            return []
+        return [
+            {"ticket_number": f"SYNC-{event_id[:4].upper()}-001", "checked_in": False},
+            {"ticket_number": f"SYNC-{event_id[:4].upper()}-002", "checked_in": True},
+            {"ticket_number": f"RATE-{event_id[:4].upper()}-003", "checked_in": False},
+        ]
 
 
 def get_wix_client() -> WixClient:

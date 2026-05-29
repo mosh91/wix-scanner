@@ -308,6 +308,9 @@ class OfflineQueueService:
             if wix_result.outcome in {"checked_in", "already_checked_in"}:
                 self.mark_processed(event_id=event_id, ticket_number=ticket_number)
                 self.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+                from app.services.ticket_manifest import get_ticket_manifest_service
+
+                get_ticket_manifest_service().mark_checked_in(event_id=event_id, ticket_number=ticket_number)
                 self._clear_pending_marker(event_id=event_id, ticket_number=ticket_number)
                 processed_count += 1
                 continue

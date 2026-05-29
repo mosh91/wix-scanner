@@ -35,12 +35,14 @@
     "scannerDisconnected": "Scanner disconnected or missing permission.",
     "webhidUnavailable": "WebHID is unavailable. Keyboard capture fallback is active.",
     "backendDegraded": "Backend is degraded. Check connectivity.",
+    "manifestStale": "Local ticket cache is stale. Validation is degraded.",
     "offlineQueued": "Backend unavailable. Scan marked as offline queue.",
     "health": {
       "usb": "USB scanner",
       "device": "Device health",
       "focus": "Input focus",
       "backend": "Backend connectivity",
+      "manifest": "Ticket cache",
       "websocket": "WebSocket connection",
       "remembered": "Remembered devices"
     },

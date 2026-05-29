@@ -7,12 +7,14 @@ import pytest
 
 from app.main import app
 from app.services.offline_queue import get_offline_queue_service
+from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.wix_client import WixCheckinResult
 
 
 @pytest.fixture(autouse=True)
 def _reset_offline_queue_state() -> None:
     get_offline_queue_service().reset_for_tests()
+    get_ticket_manifest_service().reset_for_tests()
 
 
 # ---------------------------------------------------------------------------
@@ -597,4 +599,68 @@ def test_worker_replays_queued_items_when_connectivity_returns(monkeypatch: pyte
     assert processed == 1
     assert get_offline_queue_service().queue_depth() == 0
     assert get_offline_queue_service().is_processed(event_id=event_id, ticket_number=ticket)
+
+
+# ---------------------------------------------------------------------------
+# P1-US-05b — Event ticket manifest sync and local validation cache
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_sync_makes_event_queryable() -> None:
+    client = TestClient(app)
+    event_id = "evt-sync-100"
+
+    response = client.post("/api/manifest/sync", json={"event_id": event_id})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event_id"] == event_id
+    assert body["total_tickets"] >= 1
+    assert body["stale"] is False
+
+    ticket_lookup = client.get(f"/api/manifest/events/{event_id}/tickets/SYNC-{event_id[:4].upper()}-001")
+    assert ticket_lookup.status_code == 200
+    assert ticket_lookup.json()["manifest_state"] in {"checked_in", "not_checked_in"}
+
+
+def test_offline_scan_uses_synced_manifest_cache() -> None:
+    client = TestClient(app)
+    event_id = "evt-sync-offline"
+
+    sync_response = client.post("/api/manifest/sync", json={"event_id": event_id})
+    assert sync_response.status_code == 200
+
+    known_ticket = f"RATE-{event_id[:4].upper()}-003"
+    scan_response = client.post(
+        "/api/checkins/scan",
+        json={"payload": f"eventId={event_id};ticketNumber={known_ticket}"},
+    )
+    assert scan_response.status_code == 200
+    body = scan_response.json()
+    assert body["status"] == "QUEUED_OFFLINE"
+    assert body["accepted"] is True
+
+
+def test_manifest_status_defaults_to_stale_when_not_synced() -> None:
+    client = TestClient(app)
+    event_id = "evt-never-synced"
+
+    status_response = client.get(f"/api/manifest/events/{event_id}/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["stale"] is True
+
+
+def test_scanner_health_reports_manifest_staleness_flag() -> None:
+    client = TestClient(app)
+    event_id = "evt-health-manifest"
+
+    stale_health = client.get("/api/health/scanner", params={"event_id": event_id})
+    assert stale_health.status_code == 200
+    assert stale_health.json()["manifest_cache_stale"] is True
+
+    sync_response = client.post("/api/manifest/sync", json={"event_id": event_id})
+    assert sync_response.status_code == 200
+
+    fresh_health = client.get("/api/health/scanner", params={"event_id": event_id})
+    assert fresh_health.status_code == 200
+    assert fresh_health.json()["manifest_cache_stale"] is False
 

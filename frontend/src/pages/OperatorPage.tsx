@@ -92,7 +92,7 @@ export default function OperatorPage() {
   const isFirstMountRef = useRef(true);
 
   const webhid = useWebHIDScannerHealth();
-  const backendHealth = useBackendScannerHealth();
+  const backendHealth = useBackendScannerHealth(session?.activeEventId);
 
   const healthItems = useMemo(
     () => {
@@ -144,6 +144,16 @@ export default function OperatorPage() {
                 : backendHealth.error ?? t("operator.backendDegraded"),
         },
         {
+          key: "manifest",
+          label: t("operator.health.manifest"),
+          icon: KeyRound,
+          value: backendHealth.data?.manifest_cache_stale ? "stale" : "fresh",
+          severity: (backendHealth.data?.manifest_cache_stale ? "warn" : "good") as HealthSeverity,
+          problem: backendHealth.data?.manifest_cache_stale
+            ? t("operator.manifestStale")
+            : null,
+        },
+        {
           key: "websocket",
           label: t("operator.health.websocket"),
           icon: Wifi,
@@ -155,6 +165,7 @@ export default function OperatorPage() {
     },
     [
       backendHealth.data?.backend_status,
+      backendHealth.data?.manifest_cache_stale,
       backendHealth.error,
       isWindowFocused,
       t,
@@ -235,7 +246,10 @@ export default function OperatorPage() {
     if (backendHealth.data.backend_status === "red") {
       toast.error(t("operator.backendDegraded"));
     }
-  }, [backendHealth.data, t]);
+    if (backendHealth.data.manifest_cache_stale && enrolled) {
+      toast.warning(t("operator.manifestStale"));
+    }
+  }, [backendHealth.data, enrolled, t]);
 
   const processBootstrapQR = async (payload: string) => {
     const overlayTimer = window.setTimeout(() => setIsProcessing(true), 300);

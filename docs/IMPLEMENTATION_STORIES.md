@@ -254,17 +254,17 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-05b: Event ticket manifest sync and local validation cache
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As the system, I want a local ticket manifest per event so the kiosk can validate tickets when Wix is temporarily unavailable.
 
 Tasks:
-- Add a sync job that imports the active event ticket roster from Wix into PostgreSQL and Redis.
-- Track ticket state, last known sync time, and source revision for each cached ticket.
-- Expose read APIs for ticket status lookups from the local cache.
-- Mark cached ticket data as stale when the sync horizon is exceeded.
-- Reconcile cached ticket state back to Wix after connectivity returns.
+- [x] Add a sync job that imports the active event ticket roster from Wix into PostgreSQL and Redis.
+- [x] Track ticket state, last known sync time, and source revision for each cached ticket.
+- [x] Expose read APIs for ticket status lookups from the local cache.
+- [x] Mark cached ticket data as stale when the sync horizon is exceeded.
+- [x] Reconcile cached ticket state back to Wix after connectivity returns.
 
 Acceptance criteria:
 - Given a successful sync, when the local cache is refreshed, then the active event has a queryable ticket manifest.

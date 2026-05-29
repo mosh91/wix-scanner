@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { fetchScannerHealth, type ScannerHealthResponse } from "@/services/scannerApi";
 
-export function useBackendScannerHealth() {
+export function useBackendScannerHealth(activeEventId?: string) {
   const [data, setData] = useState<ScannerHealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -11,7 +11,7 @@ export function useBackendScannerHealth() {
 
     const poll = async () => {
       try {
-        const response = await fetchScannerHealth();
+        const response = await fetchScannerHealth(activeEventId);
         if (!mounted) {
           return;
         }
@@ -34,7 +34,7 @@ export function useBackendScannerHealth() {
       mounted = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [activeEventId]);
 
   return {
     data,

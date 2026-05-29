@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.services.offline_queue import get_offline_queue_service
 from app.middleware.request_timing import RequestTimingMiddleware
 from app.services.scan_runtime import scan_runtime_store
+from app.services.ticket_manifest import get_ticket_manifest_service
 
 
 async def _cleanup_loop() -> None:
@@ -29,21 +30,35 @@ async def _offline_queue_worker_loop() -> None:
         queue_service.process_pending_once(max_items=20)
 
 
+async def _manifest_sync_loop() -> None:
+    interval = 30
+    manifest_service = get_ticket_manifest_service()
+    while True:
+        await asyncio.sleep(interval)
+        manifest_service.sync_tracked_events_once()
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())
+    manifest_sync_task = asyncio.create_task(_manifest_sync_loop())
     try:
         yield
     finally:
         cleanup_task.cancel()
         queue_worker_task.cancel()
+        manifest_sync_task.cancel()
         try:
             await cleanup_task
         except asyncio.CancelledError:
             pass
         try:
             await queue_worker_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await manifest_sync_task
         except asyncio.CancelledError:
             pass
 

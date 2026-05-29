@@ -35,12 +35,14 @@
     "scannerDisconnected": "Scanner desconectado o sin permiso.",
     "webhidUnavailable": "WebHID no esta disponible. Usando captura por teclado como fallback.",
     "backendDegraded": "Backend degradado. Revise conectividad.",
+    "manifestStale": "Cache local de tickets desactualizada. Validacion degradada.",
     "offlineQueued": "Sin conexion. Escaneo marcado para cola offline.",
     "health": {
       "usb": "USB scanner",
       "device": "Salud del dispositivo",
       "focus": "Foco de entrada",
       "backend": "Conectividad backend",
+      "manifest": "Cache de tickets",
       "websocket": "Conexion WebSocket",
       "remembered": "Dispositivos recordados"
     },
