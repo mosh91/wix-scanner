@@ -501,18 +501,29 @@ Acceptance criteria:
 Status: `Not Started`
 
 User story:
-As an admin, I want to manage venue relays so I can monitor local ingestion reliability per location.
+As an admin, I want to manage venue relays/kiosks and generate bootstrap QR login credentials so each door team can quickly activate the correct event context.
 
 Tasks:
 - Build Edge Relay Management screen.
 - Register relay instances with venue and station mapping.
 - Show relay status, local queue depth, last heartbeat, and software version.
 - Add controls to disable/enable a relay and rotate relay credentials.
+- Add kiosk inventory view (edge and non-edge stations) with door assignment, active event, last bootstrap login, and operator/session metadata.
+- Add bootstrap credential generator in admin UI:
+  - Generate signed short-lived bootstrap payload tied to event + door/station scope.
+  - Render QR preview for direct scanning on kiosk screen.
+  - Provide copy-to-clipboard text output (signed token or signed short link) so admins can paste/share in chat tools with door leaders.
+  - Support one-time-use and reusable-with-expiry modes.
+- Add bootstrap credential lifecycle controls: revoke, regenerate, and audit trail.
+- Add backend endpoint(s) for bootstrap token issuance and validation with signature verification and expiration checks.
 
 Acceptance criteria:
 - Given registered relay instances, when screen loads, then each relay shows current health and queue depth.
 - Given relay credentials are rotated, when new credentials are issued, then old credentials are invalidated after grace window.
 - Given relay heartbeat is stale, when threshold is exceeded, then UI indicates degraded relay state.
+- Given an admin generates a bootstrap credential, when the QR is scanned on a kiosk, then the kiosk is logged into the assigned event/station scope.
+- Given an admin uses copy/share output, when the door leader pastes the token/link in chat and opens it on a kiosk, then bootstrap login works without manual credential typing.
+- Given a bootstrap credential is expired, revoked, or out-of-scope, when used by kiosk, then login is denied with explicit reason and an audit record is created.
 
 ---
 

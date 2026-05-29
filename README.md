@@ -209,6 +209,30 @@ Each kiosk session should carry:
 
 If the scanned bootstrap QR belongs to a different event than the active one, the app should either reject it or require an explicit admin override. That keeps one station from accidentally processing the wrong event.
 
+### Admin Bootstrap QR Management
+
+Add an admin section to manage all kiosks/edge relays and issue bootstrap login credentials by QR.
+
+- Admin can view all kiosks/relays with venue, door, assigned event, status, and last login time.
+- Admin can generate a signed bootstrap payload for one device, one door group, or a temporary shift window.
+- System renders a visual QR for on-site scan and also provides a copy/share text format for chat tools.
+- The shared text format should be a signed short-lived link or token string so a door leader can paste it directly in chat and open it on any station.
+- Bootstrap credentials must be time-bound, revocable, and auditable.
+
+Recommended payload controls:
+
+- `deviceId` or `relayId`
+- `eventId`
+- `doorGroup` or `stationScope`
+- `issuedAt`, `expiresAt`
+- `oneTimeUse` flag when needed
+- signature
+
+Operational behavior:
+
+- If a QR/token is expired, revoked, or used outside scope, kiosk login is rejected with a clear reason.
+- If internet is unavailable during bootstrap validation, kiosk keeps previous active session if still valid, otherwise remains in waiting mode and shows degraded login status.
+
 ### Offline Ticket Coverage
 
 The current implementation plan should include a local event ticket manifest, not just a check-in ledger.
