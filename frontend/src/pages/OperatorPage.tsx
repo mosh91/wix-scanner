@@ -556,24 +556,24 @@ export default function OperatorPage() {
 
                   return compactStatus;
                 })}
-              </div>
-
-              <Separator className="bg-white/20" />
-              <div className="rounded-lg border border-white/20 p-3">
-                <p className="flex items-center gap-2 text-white/85">
-                  <Usb className="size-4" />
-                  {webhid.deviceLabel}
-                </p>
-                <p className="mt-1 text-xs text-white/70">
-                  {t("operator.health.remembered")}: {webhid.rememberedDeviceCount}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void webhid.requestPermission()}
-                  className="mt-2 rounded-full border border-white/40 px-3 py-1 text-xs uppercase tracking-wide hover:bg-white/10"
-                >
-                  {t("operator.grantPermission")}
-                </button>
+                
+                {/* USB Device Info - spans 4 columns next to WebSocket */}
+                <div className="col-span-2 rounded-lg border border-white/20 bg-white/5 p-3 md:col-span-4">
+                  <p className="flex items-center gap-2 text-white/85">
+                    <Usb className="size-4" />
+                    {webhid.deviceLabel}
+                  </p>
+                  <p className="mt-1 text-xs text-white/70">
+                    {t("operator.health.remembered")}: {webhid.rememberedDeviceCount}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void webhid.requestPermission()}
+                    className="mt-2 rounded-full border border-white/40 px-3 py-1 text-xs uppercase tracking-wide hover:bg-white/10"
+                  >
+                    {t("operator.grantPermission")}
+                  </button>
+                </div>
               </div>
             </CardContent>
           </Card>

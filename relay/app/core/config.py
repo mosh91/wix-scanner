@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     cloud_base_url: str = "http://localhost:8000/api"
     # Request timeout for cloud backend calls.
     cloud_request_timeout_ms: int = 5000
+    # Local queue persistence (SQLite).
+    queue_db_path: str = "./data/relay_queue.db"
+    # Forwarder backoff timing (milliseconds).
+    forwarder_backoff_base_ms: int = 1000
+    forwarder_backoff_max_ms: int = 30000
+    forwarder_poll_interval_s: int = 10
 
     model_config = SettingsConfigDict(
         env_file=".env",
