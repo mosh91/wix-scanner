@@ -325,6 +325,40 @@ class OfflineQueueService:
 
         return processed_count
 
+    def list_pending_jobs(self, *, event_id: str | None = None, limit: int = 200) -> list[PendingCheckinJob]:
+        payloads: list[str] = []
+        capped_limit = max(1, min(limit, 1000))
+
+        if self._redis_client is None:
+            payloads = list(self._memory_backend._queue)[:capped_limit]
+        else:
+            raw_payloads = self._redis_client.lrange(self._queue_key(), 0, capped_limit - 1)
+            payloads = [str(item) for item in raw_payloads]
+
+        jobs: list[PendingCheckinJob] = []
+        for payload in payloads:
+            try:
+                data = json.loads(payload)
+                current_event_id = str(data["event_id"])
+                if event_id is not None and current_event_id != event_id:
+                    continue
+                jobs.append(
+                    PendingCheckinJob(
+                        event_id=current_event_id,
+                        ticket_number=str(data["ticket_number"]),
+                        block_id=str(data.get("block_id", "general")),
+                        operation_type=str(data.get("operation_type", "checkin")),
+                        idempotency_key=str(data.get("idempotency_key", "")),
+                        correlation_id=str(data.get("correlation_id", "offline-worker")),
+                        attempts=int(data.get("attempts", 0)),
+                        queued_at=float(data.get("queued_at", 0.0)),
+                    )
+                )
+            except Exception:
+                continue
+
+        return jobs[:capped_limit]
+
     def reset_for_tests(self) -> None:
         if self._redis_client is None:
             self._memory_backend.reset()

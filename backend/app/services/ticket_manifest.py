@@ -214,19 +214,67 @@ class TicketManifestService:
             for row in rows
         ]
 
-    def mark_checked_in(self, *, event_id: str, ticket_number: str) -> None:
+    def list_all_tickets(self, *, event_id: str) -> list[ManifestTicketRecord]:
+        with sqlite3.connect(self._database_file) as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, ticket_number, manifest_state, last_known_sync_ts, source_revision, last_seen_scan_at
+                FROM event_ticket_manifest
+                WHERE event_id = ?
+                ORDER BY ticket_number ASC
+                """,
+                (event_id,),
+            ).fetchall()
+
+        return [
+            ManifestTicketRecord(
+                event_id=row[0],
+                ticket_number=row[1],
+                manifest_state=row[2],
+                last_known_sync_ts=float(row[3]),
+                source_revision=row[4],
+                last_seen_scan_at=float(row[5]) if row[5] is not None else None,
+            )
+            for row in rows
+        ]
+
+    def _upsert_ticket_state(self, *, event_id: str, ticket_number: str, manifest_state: str) -> None:
         normalized_ticket = ticket_number.strip().upper()
         now = time()
+        source_revision = f"reconciliation:{int(now)}"
         with sqlite3.connect(self._database_file) as connection:
             connection.execute(
                 """
-                UPDATE event_ticket_manifest
-                SET manifest_state = 'checked_in', last_seen_scan_at = ?, last_known_sync_ts = ?
-                WHERE event_id = ? AND ticket_number = ?
+                INSERT INTO event_ticket_manifest (
+                    event_id,
+                    ticket_number,
+                    manifest_state,
+                    last_known_sync_ts,
+                    source_revision,
+                    last_seen_scan_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, ticket_number) DO UPDATE SET
+                    manifest_state = excluded.manifest_state,
+                    last_known_sync_ts = excluded.last_known_sync_ts,
+                    source_revision = excluded.source_revision,
+                    last_seen_scan_at = excluded.last_seen_scan_at
                 """,
-                (now, now, event_id, normalized_ticket),
+                (
+                    event_id,
+                    normalized_ticket,
+                    manifest_state,
+                    now,
+                    source_revision,
+                    now if manifest_state == "checked_in" else None,
+                ),
             )
             connection.commit()
+
+    def mark_checked_in(self, *, event_id: str, ticket_number: str) -> None:
+        self._upsert_ticket_state(event_id=event_id, ticket_number=ticket_number, manifest_state="checked_in")
+
+    def mark_not_checked_in(self, *, event_id: str, ticket_number: str) -> None:
+        self._upsert_ticket_state(event_id=event_id, ticket_number=ticket_number, manifest_state="not_checked_in")
 
     def status(self, *, event_id: str) -> ManifestSyncStatus:
         with sqlite3.connect(self._database_file) as connection:

@@ -28,7 +28,8 @@
       "integrations": "Integrations",
       "deliveries": "Webhook Deliveries",
       "credentials": "Credentials",
-      "readiness": "Readiness"
+      "readiness": "Readiness",
+      "reconciliation": "Reconciliation"
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",
@@ -208,6 +209,35 @@
         "redis_cache": "Redis cache warming",
         "backend": "Backend connectivity",
         "worker": "Worker health"
+      }
+    },
+    "reconciliation": {
+      "title": "Reconciliation",
+      "description": "Compare local ticket state with Wix source-of-truth, apply deterministic drift resolution, and manually resolve conflicts.",
+      "eventPlaceholder": "event-id",
+      "run": "Run reconciliation",
+      "refresh": "Refresh",
+      "loadError": "Could not load reconciliation data",
+      "runSuccess": "Reconciliation run completed",
+      "runError": "Could not run reconciliation",
+      "resolveSuccess": "Conflict resolved",
+      "resolveError": "Could not resolve conflict",
+      "latestRun": "Latest run",
+      "driftCount": "Drift",
+      "resolvedCount": "Resolved",
+      "conflictCount": "Conflicts",
+      "conflictConsole": "Conflict console",
+      "noConflicts": "No conflicts to review.",
+      "localResult": "Local",
+      "wixResult": "Wix",
+      "acceptWix": "Accept Wix",
+      "keepLocal": "Keep local",
+      "states": {
+        "in_sync": "In sync",
+        "local_pending": "Local pending",
+        "local_only": "Local only",
+        "wix_only": "Wix only",
+        "conflict": "Conflict"
       }
     }
   },

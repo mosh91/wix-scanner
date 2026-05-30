@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import logging
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -16,6 +18,10 @@ from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.worker_health import get_worker_health_service
 from app.api.routes.checkins import set_scan_idempotency_service
+
+
+logger = logging.getLogger(__name__)
+startup_logger = logging.getLogger("uvicorn.error")
 
 
 async def _cleanup_loop() -> None:
@@ -51,7 +57,13 @@ async def _manifest_sync_loop() -> None:
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # Initialize scan idempotency service
     settings = get_settings()
-    scan_idempotency = ScanIdempotencyService(db_url=settings.database_url)
+    database_url = getattr(settings, "database_url", None)
+    if not database_url:
+        default_scan_db = Path("./data/scan_idempotency.db")
+        default_scan_db.parent.mkdir(parents=True, exist_ok=True)
+        database_url = f"sqlite:///{default_scan_db.resolve()}"
+    startup_logger.info("scan_idempotency initialized with db_url=%s", database_url)
+    scan_idempotency = ScanIdempotencyService(db_url=database_url)
     set_scan_idempotency_service(scan_idempotency)
 
     cleanup_task = asyncio.create_task(_cleanup_loop())

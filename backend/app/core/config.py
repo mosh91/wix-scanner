@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     auth_mode: Literal["oauth", "api_key"] = "api_key"
     credential_expiry_warning_hours: int = 24
     credential_lifecycle_db_path: str = "./data/credential_lifecycle.db"
+    reconciliation_db_path: str = "./data/reconciliation.db"
     wix_timeout_ms: int = 2500
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150

@@ -112,6 +112,42 @@ export type EventReadinessResponse = {
   readiness_acknowledged: boolean;
 };
 
+export type ReconciliationState = "in_sync" | "local_pending" | "local_only" | "wix_only" | "conflict";
+
+export type ReconciliationRunRecord = {
+  run_id: string;
+  event_id: string;
+  status: string;
+  reconciliation_state: ReconciliationState;
+  drift_count: number;
+  resolved_count: number;
+  conflict_count: number;
+  started_at: string;
+  finished_at: string | null;
+  triggered_by_actor: string;
+  notes: string | null;
+};
+
+export type ReconciliationItemRecord = {
+  item_id: string;
+  run_id: string;
+  event_id: string;
+  ticket_number: string;
+  reconciliation_state: ReconciliationState;
+  local_result: string | null;
+  wix_result: string | null;
+  resolution_result: string | null;
+  detail: Record<string, unknown>;
+  resolved_at: string | null;
+  conflict_resolution_notes: string | null;
+  resolved_by_actor: string | null;
+};
+
+export type ReconciliationRunResponse = {
+  run: ReconciliationRunRecord;
+  items: ReconciliationItemRecord[];
+};
+
 export type ManifestSyncResponse = {
   event_id: string;
   total_tickets: number;
@@ -334,6 +370,62 @@ export async function syncManifest(eventId: string): Promise<ManifestSyncRespons
     throw new Error(`Sync manifest failed with status ${response.status}`);
   }
   return (await response.json()) as ManifestSyncResponse;
+}
+
+export async function runEventReconciliation(
+  eventId: string,
+  actor = "operator-ui",
+  notes?: string,
+): Promise<ReconciliationRunResponse> {
+  const response = await fetch(`${API_BASE}/admin/events/${encodeURIComponent(eventId)}/reconciliation/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor, notes }),
+  });
+  if (!response.ok) {
+    throw new Error(`Run reconciliation failed with status ${response.status}`);
+  }
+  return (await response.json()) as ReconciliationRunResponse;
+}
+
+export async function listReconciliationRuns(eventId: string, limit = 20): Promise<ReconciliationRunRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/events/${encodeURIComponent(eventId)}/reconciliation/runs?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`List reconciliation runs failed with status ${response.status}`);
+  }
+  return (await response.json()) as ReconciliationRunRecord[];
+}
+
+export async function listReconciliationConflicts(
+  eventId: string,
+  runId?: string,
+  limit = 100,
+): Promise<ReconciliationItemRecord[]> {
+  const runParam = runId ? `&run_id=${encodeURIComponent(runId)}` : "";
+  const response = await fetch(
+    `${API_BASE}/admin/events/${encodeURIComponent(eventId)}/reconciliation/conflicts?limit=${limit}${runParam}`,
+  );
+  if (!response.ok) {
+    throw new Error(`List reconciliation conflicts failed with status ${response.status}`);
+  }
+  return (await response.json()) as ReconciliationItemRecord[];
+}
+
+export async function resolveReconciliationConflict(
+  itemId: string,
+  resolution: "accept_wix" | "keep_local",
+  actor = "operator-ui",
+  note?: string,
+): Promise<ReconciliationItemRecord> {
+  const response = await fetch(`${API_BASE}/admin/reconciliation/items/${encodeURIComponent(itemId)}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor, resolution, note }),
+  });
+  if (!response.ok) {
+    throw new Error(`Resolve reconciliation conflict failed with status ${response.status}`);
+  }
+  return (await response.json()) as ReconciliationItemRecord;
 }
 
 export async function verifyBindingScopes(bindingId: string, actor = "security-admin-ui"): Promise<WixScopeAuditRecord> {

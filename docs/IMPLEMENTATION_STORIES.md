@@ -795,7 +795,7 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-15: Reconciliation contract and drift semantics
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an architect, I want a clear reconciliation protocol so local check-in state can be safely merged with Wix as source of truth without data loss.

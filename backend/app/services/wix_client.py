@@ -156,6 +156,11 @@ class WixClient:
                         {
                             "ticket_number": ticket_number,
                             "checked_in": isinstance(ticket.get("checkIn"), dict),
+                            "checked_in_at": (
+                                ticket.get("checkIn", {}).get("checkedInAt")
+                                if isinstance(ticket.get("checkIn"), dict)
+                                else None
+                            ),
                         }
                     )
 
@@ -283,9 +288,13 @@ class WixClient:
         if "EMPTY" in token:
             return []
         return [
-            {"ticket_number": f"SYNC-{event_id[:4].upper()}-001", "checked_in": False},
-            {"ticket_number": f"SYNC-{event_id[:4].upper()}-002", "checked_in": True},
-            {"ticket_number": f"RATE-{event_id[:4].upper()}-003", "checked_in": False},
+            {"ticket_number": f"SYNC-{event_id[:4].upper()}-001", "checked_in": False, "checked_in_at": None},
+            {
+                "ticket_number": f"SYNC-{event_id[:4].upper()}-002",
+                "checked_in": True,
+                "checked_in_at": "2026-01-01T00:00:00Z",
+            },
+            {"ticket_number": f"RATE-{event_id[:4].upper()}-003", "checked_in": False, "checked_in_at": None},
         ]
 
 
