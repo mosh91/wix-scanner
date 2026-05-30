@@ -10,19 +10,42 @@
   "layout": {
     "title": "Base del proyecto lista",
     "description": "La salud del backend, las cadenas traducidas y la interfaz del operador ya están conectadas para avanzar rápido.",
-    "primaryAction": "Abrir pantalla de operador"
+    "primaryAction": "Abrir pantalla de operador",
+    "controlCenter": "Centro de Control"
   },
   "home": {
     "title": "Bienvenido",
     "description": "Este inicio usa español por defecto e incluye bloques de construcción estilo shadcn.",
     "toastButton": "Mostrar aviso",
+    "hero": {
+      "badge": "Operacion del Venue",
+      "title": "Opera check-in desde un centro de control claro",
+      "description": "Monitorea readiness del evento, salud de integraciones y flujo de webhooks sin paneles tecnicos.",
+      "primaryAction": "Iniciar modo operador"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "integrations": "Integraciones",
+      "deliveries": "Entregas de Webhooks"
+    },
+    "metrics": {
+      "verifiedBindings": "Bindings verificados",
+      "scopeWarnings": "Alertas de scopes",
+      "verifiedEvents": "Eventos verificados",
+      "webhookIssues": "Problemas de webhooks"
+    },
+    "dashboard": {
+      "quickActionsTitle": "Acciones rapidas",
+      "quickActionsDescription": "Abre escaneo, actualiza integraciones y revisa entregas recientes.",
+      "openOperator": "Abrir pantalla de operador",
+      "refreshIntegrations": "Actualizar integraciones",
+      "refreshDeliveries": "Actualizar entregas",
+      "healthTitle": "Pulso operacional",
+      "healthDescription": "Vista compacta de lo que requiere atencion antes de abrir puertas."
+    },
     "common": {
       "refresh": "Actualizar",
       "refreshing": "Actualizando..."
-    },
-    "devSurface": {
-      "title": "Superficies listas para desarrollo",
-      "description": "La salud de FastAPI, las rutas de React, los tokens de Tailwind y componentes reutilizables ya estan en su lugar."
     },
     "webhook": {
       "title": "Historial de entrega de webhooks",
@@ -36,6 +59,7 @@
     "bindings": {
       "title": "Administracion de bindings sitio-evento",
       "description": "Asocia sitios Wix con eventos, verifica instalacion de la app y activa solo eventos verificados.",
+      "helpButton": "Como completar esto",
       "sitePlaceholder": "site-id",
       "eventPlaceholder": "event-id",
       "create": "Crear binding",
@@ -53,6 +77,23 @@
       "verifyError": "No se pudo verificar el binding",
       "activateSuccess": "Evento activado",
       "activateError": "Activacion bloqueada: el evento no tiene binding verificado"
+    },
+    "bindingHelp": {
+      "title": "Como completar el binding sitio-evento",
+      "subtitle": "Guia basada en flujos Wix MCP y referencias de API Wix.",
+      "close": "Cerrar",
+      "step1Title": "Obtenga el ID del sitio Wix",
+      "step1Body": "Use Wix MCP ListWixSites (o la informacion del sitio en Wix dashboard) y copie el site ID exacto del sitio propietario del evento.",
+      "step2Title": "Obtenga el ID del evento Wix",
+      "step2Body": "Use el listado de eventos con Wix MCP (Query/List Events) y copie el event ID objetivo. Debe ser el evento exacto de check-in.",
+      "step3Title": "Cree el binding",
+      "step3Body": "Ingrese site-id y event-id en esta pantalla y cree el binding. Ejecute Verificar para confirmar estado de sitio/evento/instalacion de app.",
+      "step4Title": "Valide instalacion y scopes",
+      "step4Body": "Ejecute verificacion de scopes despues de que el binding este verificado. Permisos requeridos: WIX_EVENTS.READ_TICKETS, WIX_EVENTS.CHECK-IN y WIX_EVENTS.READ_EVENTS.",
+      "referenceTitle": "Referencias",
+      "referenceApps": "Docs Wix: List Installed Apps",
+      "referenceEvents": "Docs Wix: List Events",
+      "referenceInstance": "Docs Wix: Get App Instance"
     },
     "scopes": {
       "label": "scopes:",

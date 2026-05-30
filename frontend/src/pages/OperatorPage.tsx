@@ -18,7 +18,6 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Separator } from "@/components/ui/separator";
 import { useBackendScannerHealth } from "@/hooks/useBackendScannerHealth";
 import { useHIDScanner } from "@/hooks/useHIDScanner";
 import { useKioskSession } from "@/hooks/useKioskSession";

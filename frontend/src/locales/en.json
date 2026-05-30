@@ -10,19 +10,42 @@
   "layout": {
     "title": "Project skeleton ready",
     "description": "Backend health, translated UI strings, and the operator shell are wired for rapid feature work.",
-    "primaryAction": "Open operator screen"
+    "primaryAction": "Open operator screen",
+    "controlCenter": "Control Center"
   },
   "home": {
     "title": "Welcome",
     "description": "This starter uses Spanish by default and includes shadcn-style building blocks.",
     "toastButton": "Show toast",
+    "hero": {
+      "badge": "Venue Operations",
+      "title": "Run check-in from one clear command center",
+      "description": "Monitor event readiness, integration health, and webhook flow without opening developer panels.",
+      "primaryAction": "Start Operator Mode"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "integrations": "Integrations",
+      "deliveries": "Webhook Deliveries"
+    },
+    "metrics": {
+      "verifiedBindings": "Verified bindings",
+      "scopeWarnings": "Scope warnings",
+      "verifiedEvents": "Verified events",
+      "webhookIssues": "Webhook issues"
+    },
+    "dashboard": {
+      "quickActionsTitle": "Quick actions",
+      "quickActionsDescription": "Jump to scanning, refresh integrations, and review latest deliveries.",
+      "openOperator": "Open Operator Screen",
+      "refreshIntegrations": "Refresh Integrations",
+      "refreshDeliveries": "Refresh Deliveries",
+      "healthTitle": "Operational pulse",
+      "healthDescription": "A compact overview of what needs attention before doors open."
+    },
     "common": {
       "refresh": "Refresh",
       "refreshing": "Refreshing..."
-    },
-    "devSurface": {
-      "title": "Developer-ready surfaces",
-      "description": "FastAPI health, React routes, Tailwind tokens, and reusable UI primitives are in place."
     },
     "webhook": {
       "title": "Webhook Delivery History",
@@ -36,6 +59,7 @@
     "bindings": {
       "title": "Site-Event Binding Admin",
       "description": "Bind Wix sites to events, verify app installation, and only activate verified events.",
+      "helpButton": "How to fill this",
       "sitePlaceholder": "site-id",
       "eventPlaceholder": "event-id",
       "create": "Create Binding",
@@ -53,6 +77,23 @@
       "verifyError": "Could not verify binding",
       "activateSuccess": "Event activated",
       "activateError": "Activation blocked: event has no verified binding"
+    },
+    "bindingHelp": {
+      "title": "How to complete site-event binding",
+      "subtitle": "Guide based on Wix MCP flows and Wix API references.",
+      "close": "Close",
+      "step1Title": "Get the Wix site ID",
+      "step1Body": "Use Wix MCP ListWixSites (or Wix dashboard site info) and copy the exact site ID for the event owner site.",
+      "step2Title": "Get the Wix event ID",
+      "step2Body": "Use Wix MCP events listing (Query/List Events) and copy the target event ID. Use the exact event used for check-in.",
+      "step3Title": "Create the binding",
+      "step3Body": "Enter site-id and event-id in this screen, then create binding. Run Verify to confirm site/event/app installation state.",
+      "step4Title": "Validate installation and scopes",
+      "step4Body": "Run scope verification after binding is verified. Required permissions are WIX_EVENTS.READ_TICKETS, WIX_EVENTS.CHECK-IN, and WIX_EVENTS.READ_EVENTS.",
+      "referenceTitle": "References",
+      "referenceApps": "Wix docs: List Installed Apps",
+      "referenceEvents": "Wix docs: List Events",
+      "referenceInstance": "Wix docs: Get App Instance"
     },
     "scopes": {
       "label": "scopes:",
