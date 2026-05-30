@@ -26,7 +26,8 @@
     "tabs": {
       "dashboard": "Dashboard",
       "integrations": "Integraciones",
-      "deliveries": "Entregas de Webhooks"
+      "deliveries": "Entregas de Webhooks",
+      "credentials": "Credenciales"
     },
     "metrics": {
       "verifiedBindings": "Bindings verificados",
@@ -102,6 +103,78 @@
       "verify": "Verificar scopes",
       "verifySuccess": "Verificacion de scopes completada",
       "verifyError": "No se pudieron verificar los scopes"
+    },
+    "credentials": {
+      "title": "Ciclo de vida de credenciales",
+      "description": "Gestione perfiles de credenciales Wix API, valide conectividad y controle decisiones de modo de autenticacion por entorno.",
+      "create": "Agregar credencial",
+      "validate": "Validar",
+      "activate": "Activar",
+      "rotate": "Rotar",
+      "revoke": "Revocar",
+      "empty": "Aun no hay credenciales.",
+      "loadError": "No se pudieron cargar las credenciales",
+      "createSuccess": "Credencial creada",
+      "validateSuccess": "Credencial validada",
+      "activateSuccess": "Credencial activada",
+      "rotateSuccess": "Credencial rotada — el nuevo perfil esta activo",
+      "revokeSuccess": "Credencial revocada",
+      "helpButton": "Como usar",
+      "profileNamePlaceholder": "nombre-de-perfil",
+      "authModeLabel": "Modo de autenticacion",
+      "helpModal": {
+        "title": "Como verificar la instancia de la app Wix",
+        "subtitle": "Use el metodo real Get App Instance de Wix antes de validar o rotar credenciales.",
+        "step1Title": "Llame a Get App Instance",
+        "step1Body": "Use Wix MCP para llamar a Get App Instance en el sitio objetivo. El metodo requiere autenticacion como app Wix o usuario Wix y no acepta parametros.",
+        "step2Title": "Revise la respuesta",
+        "step2Body": "Confirme que la respuesta incluya la instancia de la app y la informacion del sitio, como instanceId, appName, siteId y siteDisplayName.",
+        "step3Title": "Uselo como verificacion previa",
+        "step3Body": "Si la instancia no es correcta o la app no esta instalada, corriguelo primero. Luego continue con la validacion o rotacion de credenciales.",
+        "referenceTitle": "Referencia de Wix",
+        "referenceBody": "Get App Instance obtiene datos de la instancia de la app instalada en un sitio Wix y del propio sitio.",
+        "referenceLink": "Abrir la documentacion de Wix Get App Instance",
+        "close": "Cancelar"
+      },
+      "states": {
+        "created": "Creada",
+        "validated": "Validada",
+        "active": "Activa",
+        "expiring_soon": "Por vencer",
+        "rotation_pending": "Rotacion pendiente",
+        "revoked": "Revocada",
+        "failed": "Fallida"
+      },
+      "authModes": {
+        "oauth": "OAuth",
+        "api_key": "Clave de API"
+      },
+      "validateModal": {
+        "title": "Validar credencial Wix API",
+        "subtitle": "Use Wix MCP para confirmar que la credencial esta bien configurada antes de ejecutar la validacion.",
+        "step1Title": "Confirme el tipo de credencial",
+        "step1Body": "Verifique el modo de autenticacion de esta credencial (OAuth o Clave de API). En produccion solo se permite OAuth.",
+        "step2Title": "Verifique la instalacion de la app Wix",
+        "step2Body": "Use Wix MCP 'Get App Instance' para confirmar que la app Wix esta instalada en el sitio objetivo y que la credencial sigue siendo valida.",
+        "step3Title": "Ejecute la validacion",
+        "step3Body": "Haga clic en Confirmar para llamar a la Wix API. El sistema contactara la plataforma Wix y actualizara el estado de la credencial segun la respuesta.",
+        "close": "Cancelar",
+        "confirm": "Validar ahora"
+      },
+      "rotateModal": {
+        "title": "Rotar credencial",
+        "subtitle": "La rotacion crea una nueva credencial, la valida y revoca la anterior. Use Wix MCP para prepararse antes de confirmar.",
+        "step1Title": "Prepare el nuevo perfil de credencial",
+        "step1Body": "Use Wix MCP 'Get App Instance' o el dashboard de Wix para obtener el nuevo token de API o credenciales OAuth del perfil de reemplazo.",
+        "step2Title": "Elija el modo de autenticacion",
+        "step2Body": "En entornos de produccion se requiere OAuth. Confirme el modo antes de rotar para evitar violaciones de modo mixto.",
+        "step3Title": "La rotacion es atomica",
+        "step3Body": "El sistema creara y validara la nueva credencial. Si la validacion tiene exito, la credencial anterior sera revocada. Si falla, la credencial anterior se mantiene activa.",
+        "step4Title": "Verifique la consistencia del modo de autenticacion",
+        "step4Body": "Despues de la rotacion, verifique la consistencia del modo de autenticacion si esta en produccion. Los modos mixtos estan bloqueados en produccion.",
+        "close": "Cancelar",
+        "confirm": "Rotar ahora"
+      }
     }
   },
   "operator": {

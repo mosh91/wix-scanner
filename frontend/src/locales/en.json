@@ -26,7 +26,8 @@
     "tabs": {
       "dashboard": "Dashboard",
       "integrations": "Integrations",
-      "deliveries": "Webhook Deliveries"
+      "deliveries": "Webhook Deliveries",
+      "credentials": "Credentials"
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",
@@ -102,6 +103,78 @@
       "verify": "Verify Scopes",
       "verifySuccess": "Scope verification completed",
       "verifyError": "Could not verify scopes"
+    },
+    "credentials": {
+      "title": "Credential Lifecycle",
+      "description": "Manage Wix API credential profiles, validate connectivity, and control auth-mode decisions across environments.",
+      "create": "Add Credential",
+      "validate": "Validate",
+      "activate": "Activate",
+      "rotate": "Rotate",
+      "revoke": "Revoke",
+      "empty": "No credentials yet.",
+      "loadError": "Could not load credentials",
+      "createSuccess": "Credential created",
+      "validateSuccess": "Credential validated",
+      "activateSuccess": "Credential activated",
+      "rotateSuccess": "Credential rotated — new profile is now active",
+      "revokeSuccess": "Credential revoked",
+      "helpButton": "How to use",
+      "profileNamePlaceholder": "profile-name",
+      "authModeLabel": "Auth mode",
+      "helpModal": {
+        "title": "How to verify the Wix app instance",
+        "subtitle": "Use the real Wix Get App Instance method before you validate or rotate credentials.",
+        "step1Title": "Call Get App Instance",
+        "step1Body": "Use Wix MCP to call Get App Instance for the target site. The method requires Wix app or Wix user authentication and does not take request parameters.",
+        "step2Title": "Check the response",
+        "step2Body": "Confirm the response includes the installed app instance and site information, such as instanceId, appName, siteId, and siteDisplayName.",
+        "step3Title": "Use it as your pre-check",
+        "step3Body": "If the app instance looks wrong or the app is not installed, fix that first. Then continue with credential validation or rotation.",
+        "referenceTitle": "Wix reference",
+        "referenceBody": "Get App Instance retrieves data about the app instance installed on a Wix site and the site itself.",
+        "referenceLink": "Open the Wix Get App Instance docs",
+        "close": "Cancel"
+      },
+      "states": {
+        "created": "Created",
+        "validated": "Validated",
+        "active": "Active",
+        "expiring_soon": "Expiring Soon",
+        "rotation_pending": "Rotation Pending",
+        "revoked": "Revoked",
+        "failed": "Failed"
+      },
+      "authModes": {
+        "oauth": "OAuth",
+        "api_key": "API Key"
+      },
+      "validateModal": {
+        "title": "Validate Wix API Credential",
+        "subtitle": "Use Wix MCP to confirm your credential is correctly configured before running validation.",
+        "step1Title": "Confirm your credential type",
+        "step1Body": "Check the auth mode of this credential (OAuth or API Key). For production, only OAuth is permitted.",
+        "step2Title": "Verify Wix app installation",
+        "step2Body": "Use Wix MCP 'Get App Instance' to confirm the Wix app is installed on the target site and the credential is still valid.",
+        "step3Title": "Run validation",
+        "step3Body": "Click Confirm to call the Wix API. The system will contact the Wix platform and update the credential state based on the response.",
+        "close": "Cancel",
+        "confirm": "Validate Now"
+      },
+      "rotateModal": {
+        "title": "Rotate Credential",
+        "subtitle": "Rotating creates a new credential, validates it, and revokes the old one. Use Wix MCP to prepare before confirming.",
+        "step1Title": "Prepare the new credential profile",
+        "step1Body": "Use Wix MCP 'Get App Instance' or the Wix dashboard to retrieve the new API token or OAuth credentials for the replacement profile.",
+        "step2Title": "Choose auth mode",
+        "step2Body": "For production environments, OAuth is required. Confirm the auth mode before rotating to avoid mixed-mode violations.",
+        "step3Title": "Rotation is atomic",
+        "step3Body": "The system will create and validate the new credential. If validation succeeds, the old credential is revoked. If it fails, the old credential stays active.",
+        "step4Title": "Check for mixed auth modes",
+        "step4Body": "After rotation, verify auth-mode consistency if running in production. Mixed modes are blocked in production.",
+        "close": "Cancel",
+        "confirm": "Rotate Now"
+      }
     }
   },
   "operator": {

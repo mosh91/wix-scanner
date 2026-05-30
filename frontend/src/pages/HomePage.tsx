@@ -7,22 +7,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  activateCredential,
   activateEvent,
+  createCredential,
   createSiteEventBinding,
   fetchWebhookHistory,
+  listCredentials,
   listLatestScopeAudits,
   listSiteEventBindings,
   listVerifiedEvents,
   retryWebhookDelivery,
+  rotateCredential,
+  validateAuthModeConsistency,
+  validateCredential,
   verifyBindingScopes,
   verifySiteEventBinding,
+  type AuthMode,
+  type CredentialLifecycleRecord,
   type SiteEventBindingRecord,
   type VerifiedEventRecord,
   type WixScopeAuditRecord,
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -36,6 +44,18 @@ export default function HomePage() {
   const [newEventId, setNewEventId] = useState("event-demo-01");
   const [activeTab, setActiveTab] = useState<HomeTab>("dashboard");
   const [isBindingHelpOpen, setIsBindingHelpOpen] = useState(false);
+
+  // Credential lifecycle state
+  const [credentials, setCredentials] = useState<CredentialLifecycleRecord[]>([]);
+  const [loadingCredentials, setLoadingCredentials] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("profile-01");
+  const [newAuthMode, setNewAuthMode] = useState<AuthMode>("api_key");
+  const [selectedCredential, setSelectedCredential] = useState<CredentialLifecycleRecord | null>(null);
+  const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
+  const [isRotateModalOpen, setIsRotateModalOpen] = useState(false);
+  const [isCredentialsHelpOpen, setIsCredentialsHelpOpen] = useState(false);
+  const [rotateNewProfile, setRotateNewProfile] = useState("");
+  const [rotateNewAuthMode, setRotateNewAuthMode] = useState<AuthMode>("api_key");
 
   const dashboardStats = useMemo(() => {
     const verifiedBindings = bindings.filter((item) => item.status === "verified").length;
@@ -147,6 +167,93 @@ export default function HomePage() {
     }
   };
 
+  const loadCredentials = useCallback(async () => {
+    setLoadingCredentials(true);
+    try {
+      const rows = await listCredentials();
+      setCredentials(rows);
+    } catch {
+      toast.error(t("home.credentials.loadError"));
+    } finally {
+      setLoadingCredentials(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadCredentials();
+  }, [loadCredentials]);
+
+  const handleCreateCredential = async () => {
+    try {
+      await createCredential(newProfileName, newAuthMode, "operator-ui");
+      toast.success(t("home.credentials.createSuccess"));
+      await loadCredentials();
+    } catch {
+      toast.error(t("home.credentials.loadError"));
+    }
+  };
+
+  const handleOpenValidateModal = (cred: CredentialLifecycleRecord) => {
+    setSelectedCredential(cred);
+    setIsValidateModalOpen(true);
+  };
+
+  const handleConfirmValidate = async () => {
+    if (!selectedCredential) return;
+    try {
+      await validateCredential(selectedCredential.credential_id, "operator-ui");
+      toast.success(t("home.credentials.validateSuccess"));
+      setIsValidateModalOpen(false);
+      setSelectedCredential(null);
+      await loadCredentials();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.credentials.loadError"));
+    }
+  };
+
+  const handleActivateCredential = async (credentialId: string) => {
+    try {
+      await activateCredential(credentialId, "operator-ui");
+      toast.success(t("home.credentials.activateSuccess"));
+      await loadCredentials();
+    } catch {
+      toast.error(t("home.credentials.loadError"));
+    }
+  };
+
+  const handleOpenRotateModal = (cred: CredentialLifecycleRecord) => {
+    setSelectedCredential(cred);
+    setRotateNewProfile(cred.profile_name + "-rotated");
+    setRotateNewAuthMode(cred.auth_mode);
+    setIsRotateModalOpen(true);
+  };
+
+  const handleConfirmRotate = async () => {
+    if (!selectedCredential) return;
+    try {
+      await rotateCredential(selectedCredential.credential_id, rotateNewProfile, rotateNewAuthMode, "operator-ui");
+      toast.success(t("home.credentials.rotateSuccess"));
+      setIsRotateModalOpen(false);
+      setSelectedCredential(null);
+      await loadCredentials();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.credentials.loadError"));
+    }
+  };
+
+  const handleCheckAuthConsistency = async () => {
+    try {
+      const result = await validateAuthModeConsistency();
+      if (result.ok) {
+        toast.success("Auth mode is consistent");
+      } else {
+        toast.error(result.error ?? "Mixed auth modes detected");
+      }
+    } catch {
+      toast.error(t("home.credentials.loadError"));
+    }
+  };
+
   return (
     <section className="space-y-5">
       <Card className="border-border/70 bg-[linear-gradient(135deg,rgba(13,40,75,0.92)_0%,rgba(25,102,165,0.92)_100%)] text-white">
@@ -179,7 +286,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -377,6 +484,239 @@ export default function HomePage() {
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {activeTab === "credentials" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>{t("home.credentials.title")}</CardTitle>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsCredentialsHelpOpen(true)}>
+                {t("home.credentials.helpButton")}
+              </Button>
+            </div>
+            <CardDescription>{t("home.credentials.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
+              <input
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                placeholder={t("home.credentials.profileNamePlaceholder")}
+              />
+              <select
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                value={newAuthMode}
+                onChange={(e) => setNewAuthMode(e.target.value as AuthMode)}
+              >
+                <option value="api_key">{t("home.credentials.authModes.api_key")}</option>
+                <option value="oauth">{t("home.credentials.authModes.oauth")}</option>
+              </select>
+              <Button onClick={() => void handleCreateCredential()}>{t("home.credentials.create")}</Button>
+              <Button variant="secondary" onClick={() => void loadCredentials()} disabled={loadingCredentials}>
+                {loadingCredentials ? t("home.common.refreshing") : t("home.common.refresh")}
+              </Button>
+            </div>
+
+            <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => void handleCheckAuthConsistency()}>
+              Check Auth Consistency
+            </Button>
+
+            {credentials.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("home.credentials.empty")}</p>
+            ) : (
+              <div className="space-y-2">
+                {credentials.map((cred) => (
+                  <div
+                    key={cred.credential_id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/70 p-3"
+                  >
+                    <div className="space-y-1 text-sm">
+                      <div className="font-medium">{cred.profile_name}</div>
+                      <div className="text-muted-foreground">
+                        {t("home.credentials.authModeLabel")}: {t(`home.credentials.authModes.${cred.auth_mode}`)}
+                        {" | "}
+                        {t(`home.credentials.states.${cred.lifecycle_state}`)}
+                      </div>
+                      {cred.validation_error ? (
+                        <div className="text-xs text-red-500">{cred.validation_error}</div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        className="h-8 px-3 text-xs"
+                        variant="outline"
+                        onClick={() => handleOpenValidateModal(cred)}
+                        disabled={cred.lifecycle_state === "revoked" || cred.lifecycle_state === "active"}
+                      >
+                        {t("home.credentials.validate")}
+                      </Button>
+                      <Button
+                        className="h-8 px-3 text-xs"
+                        variant="outline"
+                        onClick={() => void handleActivateCredential(cred.credential_id)}
+                        disabled={cred.lifecycle_state !== "validated"}
+                      >
+                        {t("home.credentials.activate")}
+                      </Button>
+                      <Button
+                        className="h-8 px-3 text-xs"
+                        variant="outline"
+                        onClick={() => handleOpenRotateModal(cred)}
+                        disabled={cred.lifecycle_state === "revoked" || cred.lifecycle_state === "failed"}
+                      >
+                        {t("home.credentials.rotate")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isCredentialsHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-background shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.credentials.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.credentials.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsCredentialsHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4 text-sm">
+              <div>
+                <div className="font-medium">1. {t("home.credentials.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.credentials.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.credentials.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.helpModal.step3Body")}</p>
+              </div>
+
+              <div className="rounded-xl border border-border/70 bg-muted/40 p-3">
+                <div className="font-medium">{t("home.credentials.helpModal.referenceTitle")}</div>
+                <p className="mt-2 text-muted-foreground">{t("home.credentials.helpModal.referenceBody")}</p>
+                <a
+                  className="mt-2 inline-block underline"
+                  href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("home.credentials.helpModal.referenceLink")}
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isValidateModalOpen && selectedCredential ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.credentials.validateModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.credentials.validateModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsValidateModalOpen(false)}>
+                {t("home.credentials.validateModal.close")}
+              </Button>
+            </div>
+            <div className="space-y-3 px-5 py-4 text-sm">
+              <div>
+                <div className="font-medium">1. {t("home.credentials.validateModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.validateModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.credentials.validateModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.validateModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.credentials.validateModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.validateModal.step3Body")}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border/70 px-5 py-3">
+              <Button variant="outline" onClick={() => setIsValidateModalOpen(false)}>
+                {t("home.credentials.validateModal.close")}
+              </Button>
+              <Button onClick={() => void handleConfirmValidate()}>
+                {t("home.credentials.validateModal.confirm")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isRotateModalOpen && selectedCredential ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.credentials.rotateModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.credentials.rotateModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsRotateModalOpen(false)}>
+                {t("home.credentials.rotateModal.close")}
+              </Button>
+            </div>
+            <div className="space-y-3 px-5 py-4 text-sm">
+              <div>
+                <div className="font-medium">1. {t("home.credentials.rotateModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.rotateModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.credentials.rotateModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.rotateModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.credentials.rotateModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.rotateModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.credentials.rotateModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.credentials.rotateModal.step4Body")}</p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+                <div className="text-xs font-medium text-muted-foreground">New profile name</div>
+                <input
+                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                  value={rotateNewProfile}
+                  onChange={(e) => setRotateNewProfile(e.target.value)}
+                  placeholder={t("home.credentials.profileNamePlaceholder")}
+                />
+                <div className="text-xs font-medium text-muted-foreground">{t("home.credentials.authModeLabel")}</div>
+                <select
+                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                  value={rotateNewAuthMode}
+                  onChange={(e) => setRotateNewAuthMode(e.target.value as AuthMode)}
+                >
+                  <option value="api_key">{t("home.credentials.authModes.api_key")}</option>
+                  <option value="oauth">{t("home.credentials.authModes.oauth")}</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border/70 px-5 py-3">
+              <Button variant="outline" onClick={() => setIsRotateModalOpen(false)}>
+                {t("home.credentials.rotateModal.close")}
+              </Button>
+              <Button onClick={() => void handleConfirmRotate()}>
+                {t("home.credentials.rotateModal.confirm")}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {isBindingHelpOpen ? (

@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     credential_db_path: str = "./data/credentials.db"
     site_event_binding_db_path: str = "./data/site_event_bindings.db"
     credential_encryption_key: str = "dev-credential-key-must-change"
+    auth_mode: Literal["oauth", "api_key"] = "api_key"
+    credential_expiry_warning_hours: int = 24
+    credential_lifecycle_db_path: str = "./data/credential_lifecycle.db"
     wix_timeout_ms: int = 2500
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150

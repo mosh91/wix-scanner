@@ -741,7 +741,7 @@ Validation:
 ---
 
 ### Story P1-US-13: Credential lifecycle and auth mode decision
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a platform engineer, I want explicit auth mode selection (OAuth vs API key) and a credential state machine so different environments can use different auth strategies safely.
