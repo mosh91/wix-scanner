@@ -45,6 +45,24 @@ services:
       backend:
         condition: service_started
 
+  relay:
+    build:
+      context: ../../relay
+    container_name: wix_scanner_relay
+    restart: unless-stopped
+    env_file:
+      - ../../relay/.env.example
+    environment:
+      WIX_RELAY_CLOUD_BASE_URL: http://backend:8000/api
+    ports:
+      - "9000:9000"
+    volumes:
+      - ../../relay:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+    depends_on:
+      backend:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     container_name: wix_scanner_postgres
