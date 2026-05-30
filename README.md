@@ -47,6 +47,8 @@ Core goals:
 Canonical SQL schema for implementation:
 
 - [docs/DB_SCHEMA.sql](docs/DB_SCHEMA.sql)
+- [docs/STORAGE_MODEL.md](docs/STORAGE_MODEL.md) (why Postgres and SQLite coexist)
+- [docs/RELAY_MODEL.md](docs/RELAY_MODEL.md) (what relay is and when to deploy it)
 
 Why this schema exists:
 

@@ -1350,6 +1350,21 @@ Acceptance criteria:
 
 ---
 
+### X-US-03: Relay and storage docs maintenance
+Status: `Not Started`
+
+Tasks:
+- Update [docs/RELAY_MODEL.md](./RELAY_MODEL.md) whenever relay architecture, protocol behavior, deployment flow, or operational guidance changes.
+- Update [docs/STORAGE_MODEL.md](./STORAGE_MODEL.md) whenever persistence responsibilities or database choices (Postgres/SQLite split, migrations, ownership) change.
+- Add doc-impact checklist item in PR template/review notes for any changes under backend relay/storage services or relay runtime modules.
+
+Acceptance criteria:
+- Given a PR changes relay behavior, when merged, then [docs/RELAY_MODEL.md](./RELAY_MODEL.md) reflects the new behavior and usage path.
+- Given a PR changes storage architecture or ownership, when merged, then [docs/STORAGE_MODEL.md](./STORAGE_MODEL.md) reflects the new state.
+- Given stories touching relay/storage complete, when marked Done, then documentation diff links are included with test/runbook updates.
+
+---
+
 ## Delivery Sequence (Recommended)
 
 1. P1-US-01
@@ -1395,6 +1410,7 @@ Acceptance criteria:
 41. **P4B-US-04 (NEW: Credential rotation drill)**
 42. **P4B-US-05 (NEW: Operator incident training)**
 43. X-US-01 and X-US-02 continuously
+44. X-US-03 continuously
 
 ## Definition of Done (Global)
 
