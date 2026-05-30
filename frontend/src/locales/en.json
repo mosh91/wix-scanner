@@ -15,7 +15,53 @@
   "home": {
     "title": "Welcome",
     "description": "This starter uses Spanish by default and includes shadcn-style building blocks.",
-    "toastButton": "Show toast"
+    "toastButton": "Show toast",
+    "common": {
+      "refresh": "Refresh",
+      "refreshing": "Refreshing..."
+    },
+    "devSurface": {
+      "title": "Developer-ready surfaces",
+      "description": "FastAPI health, React routes, Tailwind tokens, and reusable UI primitives are in place."
+    },
+    "webhook": {
+      "title": "Webhook Delivery History",
+      "description": "Monitor Wix mobile check-in webhooks and trigger manual retries for failed deliveries.",
+      "retry": "Retry",
+      "empty": "No webhook deliveries yet.",
+      "loadError": "Could not load webhook history",
+      "retrySuccess": "Webhook retry executed",
+      "retryError": "Could not retry webhook"
+    },
+    "bindings": {
+      "title": "Site-Event Binding Admin",
+      "description": "Bind Wix sites to events, verify app installation, and only activate verified events.",
+      "sitePlaceholder": "site-id",
+      "eventPlaceholder": "event-id",
+      "create": "Create Binding",
+      "verify": "Verify",
+      "activate": "Activate",
+      "status": "status:",
+      "app": "app:",
+      "verifiedEvents": "Verified Events",
+      "noVerifiedEvents": "No verified events available.",
+      "empty": "No bindings yet.",
+      "loadError": "Could not load Wix bindings",
+      "createSuccess": "Binding created and verified",
+      "createError": "Could not create binding",
+      "verifySuccess": "Verification executed",
+      "verifyError": "Could not verify binding",
+      "activateSuccess": "Event activated",
+      "activateError": "Activation blocked: event has no verified binding"
+    },
+    "scopes": {
+      "label": "scopes:",
+      "notChecked": "not checked",
+      "missing": "missing",
+      "verify": "Verify Scopes",
+      "verifySuccess": "Scope verification completed",
+      "verifyError": "Could not verify scopes"
+    }
   },
   "operator": {
     "title": "Operator screen",

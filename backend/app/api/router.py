@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.api.routes.admin_bindings import router as admin_bindings_router
+from app.api.routes.admin_scopes import router as admin_scopes_router
 from app.api.routes.bootstrap import router as bootstrap_router
 from app.api.routes.checkins import router as checkins_router
 from app.api.routes.health import router as health_router
@@ -11,6 +13,8 @@ from app.api.routes.ws_checkins import router as ws_checkins_router
 from app.api.routes.ws_health import router as ws_health_router
 
 api_router = APIRouter()
+api_router.include_router(admin_bindings_router, tags=["admin-bindings"])
+api_router.include_router(admin_scopes_router, tags=["admin-scopes"])
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(scanner_health_router, tags=["scanner-health"])
 api_router.include_router(checkins_router, tags=["checkins"])

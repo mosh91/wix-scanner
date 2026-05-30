@@ -15,7 +15,53 @@
   "home": {
     "title": "Bienvenido",
     "description": "Este inicio usa español por defecto e incluye bloques de construcción estilo shadcn.",
-    "toastButton": "Mostrar aviso"
+    "toastButton": "Mostrar aviso",
+    "common": {
+      "refresh": "Actualizar",
+      "refreshing": "Actualizando..."
+    },
+    "devSurface": {
+      "title": "Superficies listas para desarrollo",
+      "description": "La salud de FastAPI, las rutas de React, los tokens de Tailwind y componentes reutilizables ya estan en su lugar."
+    },
+    "webhook": {
+      "title": "Historial de entrega de webhooks",
+      "description": "Monitorea webhooks de check-in movil de Wix y ejecuta reintentos manuales cuando fallen.",
+      "retry": "Reintentar",
+      "empty": "Aun no hay entregas de webhooks.",
+      "loadError": "No se pudo cargar historial de webhooks",
+      "retrySuccess": "Reintento de webhook ejecutado",
+      "retryError": "No se pudo reintentar el webhook"
+    },
+    "bindings": {
+      "title": "Administracion de bindings sitio-evento",
+      "description": "Asocia sitios Wix con eventos, verifica instalacion de la app y activa solo eventos verificados.",
+      "sitePlaceholder": "site-id",
+      "eventPlaceholder": "event-id",
+      "create": "Crear binding",
+      "verify": "Verificar",
+      "activate": "Activar",
+      "status": "estado:",
+      "app": "app:",
+      "verifiedEvents": "Eventos verificados",
+      "noVerifiedEvents": "No hay eventos verificados disponibles.",
+      "empty": "Aun no hay bindings.",
+      "loadError": "No se pudieron cargar los bindings de Wix",
+      "createSuccess": "Binding creado y verificado",
+      "createError": "No se pudo crear el binding",
+      "verifySuccess": "Verificacion ejecutada",
+      "verifyError": "No se pudo verificar el binding",
+      "activateSuccess": "Evento activado",
+      "activateError": "Activacion bloqueada: el evento no tiene binding verificado"
+    },
+    "scopes": {
+      "label": "scopes:",
+      "notChecked": "sin verificar",
+      "missing": "faltantes",
+      "verify": "Verificar scopes",
+      "verifySuccess": "Verificacion de scopes completada",
+      "verifyError": "No se pudieron verificar los scopes"
+    }
   },
   "operator": {
     "title": "Pantalla del operador",

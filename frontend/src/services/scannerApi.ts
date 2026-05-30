@@ -57,6 +57,60 @@ export type WebhookRetryResponse = {
   delivery_id: number;
 };
 
+export type SiteEventBindingStatus = "pending" | "verified" | "unverified" | "revoked";
+export type AppInstallationStatus = "pending_install" | "installed" | "uninstalled" | "failed";
+
+export type SiteEventBindingRecord = {
+  binding_id: string;
+  wix_site_id: string;
+  wix_event_id: string;
+  status: SiteEventBindingStatus;
+  app_installation_status: AppInstallationStatus;
+  credential_profile_id: string | null;
+  sync_policy_profile_id: string | null;
+  binding_created_at: string;
+  binding_verified_at: string | null;
+  verified_by_actor: string | null;
+  last_verification_error: string | null;
+  verification_evidence: Record<string, unknown>;
+};
+
+export type CreateSiteEventBindingRequest = {
+  wix_site_id: string;
+  wix_event_id: string;
+  actor?: string;
+  verify_immediately?: boolean;
+  credential_profile_id?: string;
+  sync_policy_profile_id?: string;
+};
+
+export type ActivateEventResponse = {
+  wix_event_id: string;
+  status: string;
+  activated_at: string;
+  activated_by_actor: string;
+};
+
+export type VerifiedEventRecord = {
+  wix_event_id: string;
+  wix_site_id: string;
+};
+
+export type WixScopeAuditRecord = {
+  audit_id: string;
+  binding_id: string;
+  wix_site_id: string;
+  wix_event_id: string;
+  required_scopes: string[];
+  verified_scopes: string[];
+  missing_scopes: string[];
+  status: "green" | "warning";
+  alert_reason: string | null;
+  scopes_verified_at: string;
+  verified_by_actor: string;
+  created_at: string;
+};
+
 // ─── Bootstrap API ──────────────────────────────────────────────────────────
 
 export const BOOTSTRAP_QR_PREFIX = "BOOTSTRAP:v1:";
@@ -172,4 +226,78 @@ export async function retryWebhookDelivery(deliveryId: number): Promise<WebhookR
     throw new Error(`Webhook retry failed with status ${response.status}`);
   }
   return (await response.json()) as WebhookRetryResponse;
+}
+
+export async function createSiteEventBinding(
+  request: CreateSiteEventBindingRequest,
+): Promise<SiteEventBindingRecord> {
+  const response = await fetch(`${API_BASE}/admin/site-event-bindings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Create site-event binding failed with status ${response.status}`);
+  }
+  return (await response.json()) as SiteEventBindingRecord;
+}
+
+export async function listSiteEventBindings(): Promise<SiteEventBindingRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/site-event-bindings`);
+  if (!response.ok) {
+    throw new Error(`List site-event bindings failed with status ${response.status}`);
+  }
+  return (await response.json()) as SiteEventBindingRecord[];
+}
+
+export async function verifySiteEventBinding(bindingId: string, actor = "operator-ui"): Promise<SiteEventBindingRecord> {
+  const response = await fetch(`${API_BASE}/admin/site-event-bindings/${bindingId}/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    throw new Error(`Verify binding failed with status ${response.status}`);
+  }
+  return (await response.json()) as SiteEventBindingRecord;
+}
+
+export async function listVerifiedEvents(): Promise<VerifiedEventRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/events`);
+  if (!response.ok) {
+    throw new Error(`List verified events failed with status ${response.status}`);
+  }
+  return (await response.json()) as VerifiedEventRecord[];
+}
+
+export async function activateEvent(wixEventId: string, actor = "operator-ui"): Promise<ActivateEventResponse> {
+  const response = await fetch(`${API_BASE}/admin/events/${encodeURIComponent(wixEventId)}/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    throw new Error(`Activate event failed with status ${response.status}`);
+  }
+  return (await response.json()) as ActivateEventResponse;
+}
+
+export async function verifyBindingScopes(bindingId: string, actor = "security-admin-ui"): Promise<WixScopeAuditRecord> {
+  const response = await fetch(`${API_BASE}/admin/site-event-bindings/${bindingId}/scopes/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    throw new Error(`Verify binding scopes failed with status ${response.status}`);
+  }
+  return (await response.json()) as WixScopeAuditRecord;
+}
+
+export async function listLatestScopeAudits(): Promise<WixScopeAuditRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/scopes/latest`);
+  if (!response.ok) {
+    throw new Error(`List scope audits failed with status ${response.status}`);
+  }
+  return (await response.json()) as WixScopeAuditRecord[];
 }

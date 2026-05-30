@@ -640,7 +640,7 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-11: Wix site-event binding and app installation verification
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a platform administrator, I want clear site-event bindings and app installation verification so the system only uses events from approved Wix sites and prevents auth to wrong accounts.
@@ -660,16 +660,45 @@ Acceptance criteria:
 - Given an event is bound to a site, when event activation is attempted, then system checks binding status and rejects if not verified.
 - Given a binding is verified, when querying events, then only events from verified bindings are available.
 
+Implementation notes:
+- Added backend site-event binding service in `backend/app/services/site_event_binding.py`.
+  - Data model includes `binding_id`, `wix_site_id`, `wix_event_id`, `status`, `app_installation_status`, `credential_profile_id`, `sync_policy_profile_id`, `binding_created_at`, `binding_verified_at`, `verified_by_actor`, and verification evidence fields.
+  - Added deterministic mock-mode verifier for site/event/app installation checks.
+  - Added activation guard so event activation is blocked unless a verified binding exists.
+- Added admin APIs in `backend/app/api/routes/admin_bindings.py`:
+  - `POST /api/admin/site-event-bindings`
+  - `POST /api/admin/site-event-bindings/{binding_id}/verify`
+  - `GET /api/admin/site-event-bindings`
+  - `GET /api/admin/events`
+  - `POST /api/admin/events/{wix_event_id}/activate`
+- Wired routes in `backend/app/api/router.py`.
+- Added config/env support for binding DB path:
+  - `backend/app/core/config.py` -> `site_event_binding_db_path`
+  - `backend/.env.example` -> `WIX_SCANNER_SITE_EVENT_BINDING_DB_PATH`
+- Added acceptance-focused backend tests in `backend/tests/test_site_event_bindings.py` covering:
+  - create + immediate verify
+  - app-not-installed pending behavior
+  - manual verification transitions with actor evidence
+  - activation rejection without verified binding
+  - verified-only event listing
+- Added lightweight admin UI surface in `frontend/src/pages/HomePage.tsx` and API client methods in `frontend/src/services/scannerApi.ts` to list/create/verify bindings and activate verified events.
+
+Validation:
+- Backend: `python -m pytest tests/test_site_event_bindings.py -q` -> 6 passed
+- Backend: `python -m pytest tests -q` -> 69 passed
+- Frontend: `npm test` -> 1 passed
+- Frontend: `npm run build` -> success
+
 ---
 
 ### Story P1-US-12: Wix app scope and permission verification
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a security administrator, I want to verify that the Wix app has the required OAuth scopes so the system can call check-in and ticket-read APIs without silent authorization failures.
 
 Tasks:
-- Define required OAuth scopes: `tickets:read`, `tickets.check-in:write`, `events:read` (and any other needed scopes).
+- Define required Wix permission scopes: `WIX_EVENTS.READ_TICKETS`, `WIX_EVENTS.CHECK-IN`, `WIX_EVENTS.READ_EVENTS`.
 - Add scope verification task: query Wix app installation to confirm scopes are present.
 - Store scope audit record (scopes_verified_at, verified_scopes, missing_scopes).
 - Add alert if required scopes are missing or revoked.
@@ -682,6 +711,32 @@ Acceptance criteria:
 - Given a required scope is missing, when verification completes, then missing scope is recorded and UI shows warning.
 - Given scopes are re-verified, when task runs, then most recent verification result is stored.
 - Given missing scopes are later granted, when re-verification is triggered, then status transitions to green.
+
+Implementation notes:
+- Added backend scope verification service in `backend/app/services/wix_scope_audit.py`.
+  - Uses required Wix permission identifiers verified from Wix API docs: `WIX_EVENTS.READ_TICKETS`, `WIX_EVENTS.CHECK-IN`, `WIX_EVENTS.READ_EVENTS`.
+  - Persists scope audit history in SQLite (`wix_scope_audit`) with required/verified/missing scopes and alert status.
+  - Enforces scope verification only when the binding is already verified.
+- Added admin scope endpoints in `backend/app/api/routes/admin_scopes.py`:
+  - `POST /api/admin/site-event-bindings/{binding_id}/scopes/verify`
+  - `GET /api/admin/scopes/latest`
+  - `GET /api/admin/site-event-bindings/{binding_id}/scopes/history`
+- Wired scope routes in `backend/app/api/router.py`.
+- Added backend tests in `backend/tests/test_scope_verification.py` covering:
+  - green status with all required scopes
+  - warning when required scope is missing
+  - re-verification transition from warning to green
+  - blocking verification when binding is unverified
+- Added frontend API methods and UI indicator for scope status:
+  - `frontend/src/services/scannerApi.ts`
+  - `frontend/src/pages/HomePage.tsx`
+  - locale updates in `frontend/src/locales/en.json` and `frontend/src/locales/es.json`
+
+Validation:
+- Backend: `python -m pytest tests/test_scope_verification.py -q` -> 4 passed
+- Backend: `python -m pytest tests -q` -> all passing
+- Frontend: `npm test` -> 1 passed
+- Frontend: `npm run build` -> success
 
 ---
 
