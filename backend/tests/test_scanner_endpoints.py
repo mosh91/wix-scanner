@@ -273,7 +273,7 @@ def test_bootstrap_generate_blocked_in_production() -> None:
     class ProdSettings(Settings):
         environment: str = "production"
 
-    fastapi_app.dependency_overrides[get_settings] = lambda: ProdSettings()
+    fastapi_app.dependency_overrides[get_settings] = lambda: ProdSettings(environment="production")
     try:
         prod_client = TestClient(fastapi_app)
         resp = prod_client.get(

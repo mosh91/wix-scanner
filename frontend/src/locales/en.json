@@ -27,7 +27,8 @@
       "dashboard": "Dashboard",
       "integrations": "Integrations",
       "deliveries": "Webhook Deliveries",
-      "credentials": "Credentials"
+      "credentials": "Credentials",
+      "readiness": "Readiness"
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",
@@ -174,6 +175,39 @@
         "step4Body": "After rotation, verify auth-mode consistency if running in production. Mixed modes are blocked in production.",
         "close": "Cancel",
         "confirm": "Rotate Now"
+      }
+    },
+    "readiness": {
+      "title": "Event Readiness",
+      "description": "Check bindings, credentials, scopes, manifest freshness, cache warming, backend connectivity, and worker health before activation.",
+      "eventPlaceholder": "event-id",
+      "check": "Check readiness",
+      "syncManifest": "Sync manifest",
+      "activate": "Activate event",
+      "refresh": "Refresh report",
+      "acknowledge": "I acknowledge degraded readiness and want to activate anyway.",
+      "loadError": "Could not load readiness report",
+      "syncSuccess": "Manifest sync started",
+      "syncError": "Could not sync manifest",
+      "activateSuccess": "Event activated after readiness check",
+      "activateError": "Could not activate event",
+      "empty": "Enter an event ID to evaluate readiness.",
+      "overall": "Overall status",
+      "failedChecks": "Failed checks",
+      "recommendedActions": "Recommended actions",
+      "statuses": {
+        "ready": "Ready",
+        "degraded": "Degraded",
+        "critical": "Critical"
+      },
+      "components": {
+        "binding": "Binding",
+        "credentials": "Credentials",
+        "scopes": "Scopes",
+        "manifest": "Manifest freshness",
+        "redis_cache": "Redis cache warming",
+        "backend": "Backend connectivity",
+        "worker": "Worker health"
       }
     }
   },

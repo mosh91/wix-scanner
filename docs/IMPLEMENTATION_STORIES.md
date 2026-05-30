@@ -765,7 +765,7 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-14: Event readiness gate and pre-event validation
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an operator, I want an automated event readiness check before doors open so I know all dependencies are healthy.

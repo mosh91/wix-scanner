@@ -14,6 +14,7 @@ from app.middleware.request_timing import RequestTimingMiddleware
 from app.services.scan_idempotency import ScanIdempotencyService
 from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
+from app.services.worker_health import get_worker_health_service
 from app.api.routes.checkins import set_scan_idempotency_service
 
 
@@ -27,17 +28,23 @@ async def _cleanup_loop() -> None:
 async def _offline_queue_worker_loop() -> None:
     interval = max(1, get_settings().offline_queue_worker_interval_s)
     queue_service = get_offline_queue_service()
+    worker_health = get_worker_health_service()
+    worker_health.pulse("offline_queue_worker")
     while True:
         await asyncio.sleep(interval)
         queue_service.process_pending_once(max_items=20)
+        worker_health.pulse("offline_queue_worker")
 
 
 async def _manifest_sync_loop() -> None:
     interval = 30
     manifest_service = get_ticket_manifest_service()
+    worker_health = get_worker_health_service()
+    worker_health.pulse("manifest_sync_worker")
     while True:
         await asyncio.sleep(interval)
         manifest_service.sync_tracked_events_once()
+        worker_health.pulse("manifest_sync_worker")
 
 
 @asynccontextmanager

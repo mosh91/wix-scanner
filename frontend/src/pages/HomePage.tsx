@@ -12,10 +12,12 @@ import {
   createCredential,
   createSiteEventBinding,
   fetchWebhookHistory,
+  getEventReadiness,
   listCredentials,
   listLatestScopeAudits,
   listSiteEventBindings,
   listVerifiedEvents,
+  syncManifest,
   retryWebhookDelivery,
   rotateCredential,
   validateAuthModeConsistency,
@@ -30,7 +32,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -56,6 +58,26 @@ export default function HomePage() {
   const [isCredentialsHelpOpen, setIsCredentialsHelpOpen] = useState(false);
   const [rotateNewProfile, setRotateNewProfile] = useState("");
   const [rotateNewAuthMode, setRotateNewAuthMode] = useState<AuthMode>("api_key");
+  const [readinessEventId, setReadinessEventId] = useState("event-demo-01");
+  const [readinessAcknowledged, setReadinessAcknowledged] = useState(false);
+  const [readinessReport, setReadinessReport] = useState<
+    | {
+        event_id: string;
+        overall_status: "ready" | "degraded" | "critical";
+        component_statuses: Array<{
+          name: string;
+          status: "ready" | "degraded" | "critical";
+          message: string;
+          details: Record<string, unknown>;
+        }>;
+        failed_checks: string[];
+        recommended_actions: string[];
+        evaluated_at: string;
+        readiness_acknowledged: boolean;
+      }
+    | null
+  >(null);
+  const [loadingReadiness, setLoadingReadiness] = useState(false);
 
   const dashboardStats = useMemo(() => {
     const verifiedBindings = bindings.filter((item) => item.status === "verified").length;
@@ -254,6 +276,47 @@ export default function HomePage() {
     }
   };
 
+  const loadReadiness = useCallback(async (eventId: string) => {
+    setLoadingReadiness(true);
+    try {
+      const report = await getEventReadiness(eventId);
+      setReadinessReport(report);
+      if (report.overall_status !== "degraded") {
+        setReadinessAcknowledged(true);
+      }
+    } catch {
+      toast.error(t("home.readiness.loadError"));
+    } finally {
+      setLoadingReadiness(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab === "readiness") {
+      void loadReadiness(readinessEventId);
+    }
+  }, [activeTab, loadReadiness, readinessEventId]);
+
+  const handleSyncReadinessManifest = async () => {
+    try {
+      await syncManifest(readinessEventId);
+      toast.success(t("home.readiness.syncSuccess"));
+      await loadReadiness(readinessEventId);
+    } catch {
+      toast.error(t("home.readiness.syncError"));
+    }
+  };
+
+  const handleActivateReadinessEvent = async () => {
+    try {
+      await activateEvent(readinessEventId, "operator-ui", readinessAcknowledged);
+      toast.success(t("home.readiness.activateSuccess"));
+      await loadReadiness(readinessEventId);
+    } catch {
+      toast.error(t("home.readiness.activateError"));
+    }
+  };
+
   return (
     <section className="space-y-5">
       <Card className="border-border/70 bg-[linear-gradient(135deg,rgba(13,40,75,0.92)_0%,rgba(25,102,165,0.92)_100%)] text-white">
@@ -286,7 +349,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "readiness"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -572,6 +635,92 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "readiness" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>{t("home.readiness.title")}</CardTitle>
+            <CardDescription>{t("home.readiness.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+              <input
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                value={readinessEventId}
+                onChange={(e) => setReadinessEventId(e.target.value)}
+                placeholder={t("home.readiness.eventPlaceholder")}
+              />
+              <Button onClick={() => void loadReadiness(readinessEventId)} disabled={loadingReadiness}>
+                {loadingReadiness ? t("home.common.refreshing") : t("home.readiness.check")}
+              </Button>
+              <Button variant="outline" onClick={() => void handleSyncReadinessManifest()}>
+                {t("home.readiness.syncManifest")}
+              </Button>
+            </div>
+
+            {readinessReport ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-border/70 bg-muted/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.readiness.overall")}</div>
+                      <div className="text-lg font-semibold">{t(`home.readiness.statuses.${readinessReport.overall_status}`)}</div>
+                    </div>
+                    <Badge variant={readinessReport.overall_status === "ready" ? "default" : readinessReport.overall_status === "degraded" ? "secondary" : "outline"}>
+                      {readinessReport.event_id}
+                    </Badge>
+                  </div>
+                  {readinessReport.failed_checks.length > 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {t("home.readiness.failedChecks")}: {readinessReport.failed_checks.join(", ")}
+                    </p>
+                  ) : null}
+                  {readinessReport.recommended_actions.length > 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {t("home.readiness.recommendedActions")}: {readinessReport.recommended_actions.join(" • ")}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {readinessReport.component_statuses.map((component) => (
+                    <div key={component.name} className="rounded-xl border border-border/70 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium">{t(`home.readiness.components.${component.name}`)}</div>
+                        <Badge variant={component.status === "ready" ? "default" : component.status === "degraded" ? "secondary" : "outline"}>
+                          {t(`home.readiness.statuses.${component.status}`)}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">{component.message}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={readinessAcknowledged}
+                    onChange={(e) => setReadinessAcknowledged(e.target.checked)}
+                    disabled={readinessReport.overall_status !== "degraded"}
+                  />
+                  <span>{t("home.readiness.acknowledge")}</span>
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void handleActivateReadinessEvent()}>
+                    {t("home.readiness.activate")}
+                  </Button>
+                  <Button variant="outline" onClick={() => void loadReadiness(readinessEventId)}>
+                    {t("home.readiness.refresh")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("home.readiness.empty")}</p>
             )}
           </CardContent>
         </Card>

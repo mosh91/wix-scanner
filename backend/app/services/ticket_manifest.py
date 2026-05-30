@@ -189,6 +189,31 @@ class TicketManifestService:
             last_seen_scan_at=float(row[5]) if row[5] is not None else None,
         )
 
+    def list_tickets(self, *, event_id: str, limit: int = 10) -> list[ManifestTicketRecord]:
+        with sqlite3.connect(self._database_file) as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, ticket_number, manifest_state, last_known_sync_ts, source_revision, last_seen_scan_at
+                FROM event_ticket_manifest
+                WHERE event_id = ?
+                ORDER BY ticket_number ASC
+                LIMIT ?
+                """,
+                (event_id, max(1, min(limit, 50))),
+            ).fetchall()
+
+        return [
+            ManifestTicketRecord(
+                event_id=row[0],
+                ticket_number=row[1],
+                manifest_state=row[2],
+                last_known_sync_ts=float(row[3]),
+                source_revision=row[4],
+                last_seen_scan_at=float(row[5]) if row[5] is not None else None,
+            )
+            for row in rows
+        ]
+
     def mark_checked_in(self, *, event_id: str, ticket_number: str) -> None:
         normalized_ticket = ticket_number.strip().upper()
         now = time()

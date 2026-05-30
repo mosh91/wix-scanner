@@ -89,6 +89,36 @@ export type ActivateEventResponse = {
   status: string;
   activated_at: string;
   activated_by_actor: string;
+  readiness_status: string;
+  readiness_acknowledged: boolean;
+  readiness_failed_checks: string[];
+  readiness_recommended_actions: string[];
+};
+
+export type ReadinessComponentStatus = {
+  name: string;
+  status: "ready" | "degraded" | "critical";
+  message: string;
+  details: Record<string, unknown>;
+};
+
+export type EventReadinessResponse = {
+  event_id: string;
+  overall_status: "ready" | "degraded" | "critical";
+  component_statuses: ReadinessComponentStatus[];
+  failed_checks: string[];
+  recommended_actions: string[];
+  evaluated_at: string;
+  readiness_acknowledged: boolean;
+};
+
+export type ManifestSyncResponse = {
+  event_id: string;
+  total_tickets: number;
+  checked_in_tickets: number;
+  stale: boolean;
+  last_known_sync_ts: number;
+  source_revision: string;
 };
 
 export type VerifiedEventRecord = {
@@ -270,16 +300,40 @@ export async function listVerifiedEvents(): Promise<VerifiedEventRecord[]> {
   return (await response.json()) as VerifiedEventRecord[];
 }
 
-export async function activateEvent(wixEventId: string, actor = "operator-ui"): Promise<ActivateEventResponse> {
+export async function activateEvent(
+  wixEventId: string,
+  actor = "operator-ui",
+  readinessAcknowledged = false,
+): Promise<ActivateEventResponse> {
   const response = await fetch(`${API_BASE}/admin/events/${encodeURIComponent(wixEventId)}/activate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actor }),
+    body: JSON.stringify({ actor, readiness_acknowledged: readinessAcknowledged }),
   });
   if (!response.ok) {
     throw new Error(`Activate event failed with status ${response.status}`);
   }
   return (await response.json()) as ActivateEventResponse;
+}
+
+export async function getEventReadiness(eventId: string): Promise<EventReadinessResponse> {
+  const response = await fetch(`${API_BASE}/admin/events/${encodeURIComponent(eventId)}/readiness`);
+  if (!response.ok) {
+    throw new Error(`Get readiness failed with status ${response.status}`);
+  }
+  return (await response.json()) as EventReadinessResponse;
+}
+
+export async function syncManifest(eventId: string): Promise<ManifestSyncResponse> {
+  const response = await fetch(`${API_BASE}/manifest/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_id: eventId }),
+  });
+  if (!response.ok) {
+    throw new Error(`Sync manifest failed with status ${response.status}`);
+  }
+  return (await response.json()) as ManifestSyncResponse;
 }
 
 export async function verifyBindingScopes(bindingId: string, actor = "security-admin-ui"): Promise<WixScopeAuditRecord> {

@@ -49,6 +49,7 @@ class VerifiedEventResponse(BaseModel):
 
 class EventActivationRequest(BaseModel):
     actor: str = Field(default="system", min_length=2, max_length=128)
+    readiness_acknowledged: bool = False
 
 
 class EventActivationResponse(BaseModel):
@@ -56,6 +57,10 @@ class EventActivationResponse(BaseModel):
     status: str
     activated_at: str
     activated_by_actor: str
+    readiness_status: str
+    readiness_acknowledged: bool
+    readiness_failed_checks: list[str]
+    readiness_recommended_actions: list[str]
 
 
 def _to_binding_response(record: WixSiteEventBindingRecord) -> SiteEventBindingResponse:
@@ -145,9 +150,40 @@ def activate_event(
     wix_event_id: str,
     request: EventActivationRequest,
 ) -> EventActivationResponse:
+    from app.services.event_readiness import get_event_readiness_service
+
+    readiness_service = get_event_readiness_service()
+    report = readiness_service.evaluate(event_id=wix_event_id, readiness_acknowledged=request.readiness_acknowledged)
+
+    if report.overall_status == "critical":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Event activation blocked by critical readiness checks.",
+                "failed_checks": report.failed_checks,
+                "recommended_actions": report.recommended_actions,
+            },
+        )
+    if report.overall_status == "degraded" and not request.readiness_acknowledged:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Event readiness is degraded and must be acknowledged before activation.",
+                "failed_checks": report.failed_checks,
+                "recommended_actions": report.recommended_actions,
+            },
+        )
+
     service = get_site_event_binding_service()
     try:
-        activation = service.activate_event(wix_event_id=wix_event_id, actor=request.actor)
+        activation = service.activate_event_with_readiness(
+            wix_event_id=wix_event_id,
+            actor=request.actor,
+            readiness_status=report.overall_status,
+            readiness_acknowledged=request.readiness_acknowledged,
+            readiness_failed_checks=report.failed_checks,
+            readiness_recommended_actions=report.recommended_actions,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -156,4 +192,8 @@ def activate_event(
         status=activation.status,
         activated_at=activation.activated_at,
         activated_by_actor=activation.activated_by_actor,
+        readiness_status=activation.readiness_status,
+        readiness_acknowledged=activation.readiness_acknowledged,
+        readiness_failed_checks=activation.readiness_failed_checks,
+        readiness_recommended_actions=activation.readiness_recommended_actions,
     )

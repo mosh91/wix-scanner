@@ -78,6 +78,10 @@ class EventActivationRecord:
     status: str
     activated_at: str
     activated_by_actor: str
+    readiness_status: str
+    readiness_acknowledged: bool
+    readiness_failed_checks: list[str]
+    readiness_recommended_actions: list[str]
 
 
 class SiteEventBindingService:
@@ -122,6 +126,16 @@ class SiteEventBindingService:
                 )
                 """
             )
+            for column_sql in (
+                "ALTER TABLE event_activation ADD COLUMN readiness_status TEXT NOT NULL DEFAULT 'ready'",
+                "ALTER TABLE event_activation ADD COLUMN readiness_acknowledged INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE event_activation ADD COLUMN readiness_failed_checks TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE event_activation ADD COLUMN readiness_recommended_actions TEXT NOT NULL DEFAULT '[]'",
+            ):
+                try:
+                    conn.execute(column_sql)
+                except sqlite3.OperationalError:
+                    pass
             conn.commit()
 
     def _now(self) -> str:
@@ -200,6 +214,17 @@ class SiteEventBindingService:
             ).fetchone()
         if row is None:
             raise ValueError("Binding not found")
+        return self._row_to_record(row)
+
+    def get_binding_by_event_id(self, wix_event_id: str) -> WixSiteEventBindingRecord | None:
+        with sqlite3.connect(self._db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM wix_site_event_binding WHERE wix_event_id = ? LIMIT 1",
+                (wix_event_id,),
+            ).fetchone()
+        if row is None:
+            return None
         return self._row_to_record(row)
 
     def list_bindings(self, *, status: BindingStatus | None = None) -> list[WixSiteEventBindingRecord]:
@@ -294,6 +319,25 @@ class SiteEventBindingService:
         ]
 
     def activate_event(self, *, wix_event_id: str, actor: str) -> EventActivationRecord:
+        return self.activate_event_with_readiness(
+            wix_event_id=wix_event_id,
+            actor=actor,
+            readiness_status="ready",
+            readiness_acknowledged=False,
+            readiness_failed_checks=[],
+            readiness_recommended_actions=[],
+        )
+
+    def activate_event_with_readiness(
+        self,
+        *,
+        wix_event_id: str,
+        actor: str,
+        readiness_status: str,
+        readiness_acknowledged: bool,
+        readiness_failed_checks: list[str],
+        readiness_recommended_actions: list[str],
+    ) -> EventActivationRecord:
         verified_events = {row["wix_event_id"] for row in self.get_verified_events()}
         if wix_event_id not in verified_events:
             raise PermissionError("Event activation blocked: no verified Wix site-event binding")
@@ -302,14 +346,36 @@ class SiteEventBindingService:
         with sqlite3.connect(self._db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO event_activation (wix_event_id, status, activated_at, activated_by_actor)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO event_activation (
+                    wix_event_id,
+                    status,
+                    activated_at,
+                    activated_by_actor,
+                    readiness_status,
+                    readiness_acknowledged,
+                    readiness_failed_checks,
+                    readiness_recommended_actions
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(wix_event_id)
                 DO UPDATE SET status=excluded.status,
                               activated_at=excluded.activated_at,
-                              activated_by_actor=excluded.activated_by_actor
+                              activated_by_actor=excluded.activated_by_actor,
+                              readiness_status=excluded.readiness_status,
+                              readiness_acknowledged=excluded.readiness_acknowledged,
+                              readiness_failed_checks=excluded.readiness_failed_checks,
+                              readiness_recommended_actions=excluded.readiness_recommended_actions
                 """,
-                (wix_event_id, "active", now, actor),
+                (
+                    wix_event_id,
+                    "active",
+                    now,
+                    actor,
+                    readiness_status,
+                    1 if readiness_acknowledged else 0,
+                    json.dumps(readiness_failed_checks),
+                    json.dumps(readiness_recommended_actions),
+                ),
             )
             conn.commit()
 
@@ -318,6 +384,10 @@ class SiteEventBindingService:
             status="active",
             activated_at=now,
             activated_by_actor=actor,
+            readiness_status=readiness_status,
+            readiness_acknowledged=readiness_acknowledged,
+            readiness_failed_checks=readiness_failed_checks,
+            readiness_recommended_actions=readiness_recommended_actions,
         )
 
 

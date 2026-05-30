@@ -27,7 +27,8 @@
       "dashboard": "Dashboard",
       "integrations": "Integraciones",
       "deliveries": "Entregas de Webhooks",
-      "credentials": "Credenciales"
+      "credentials": "Credenciales",
+      "readiness": "Preparacion"
     },
     "metrics": {
       "verifiedBindings": "Bindings verificados",
@@ -174,6 +175,39 @@
         "step4Body": "Despues de la rotacion, verifique la consistencia del modo de autenticacion si esta en produccion. Los modos mixtos estan bloqueados en produccion.",
         "close": "Cancelar",
         "confirm": "Rotar ahora"
+      }
+    },
+    "readiness": {
+      "title": "Readiness del evento",
+      "description": "Revise bindings, credenciales, scopes, frescura del manifest, cache warm, conectividad del backend y salud de workers antes de activar.",
+      "eventPlaceholder": "event-id",
+      "check": "Verificar readiness",
+      "syncManifest": "Sincronizar manifest",
+      "activate": "Activar evento",
+      "refresh": "Actualizar reporte",
+      "acknowledge": "Acepto que el readiness esta degradado y deseo activar de todos modos.",
+      "loadError": "No se pudo cargar el reporte de readiness",
+      "syncSuccess": "Sincronizacion del manifest iniciada",
+      "syncError": "No se pudo sincronizar el manifest",
+      "activateSuccess": "Evento activado despues de la verificacion de readiness",
+      "activateError": "No se pudo activar el evento",
+      "empty": "Ingrese un event ID para evaluar el readiness.",
+      "overall": "Estado general",
+      "failedChecks": "Verificaciones fallidas",
+      "recommendedActions": "Acciones recomendadas",
+      "statuses": {
+        "ready": "Listo",
+        "degraded": "Degradado",
+        "critical": "Critico"
+      },
+      "components": {
+        "binding": "Binding",
+        "credentials": "Credenciales",
+        "scopes": "Scopes",
+        "manifest": "Frescura del manifest",
+        "redis_cache": "Cache de Redis",
+        "backend": "Conectividad del backend",
+        "worker": "Salud de workers"
       }
     }
   },
