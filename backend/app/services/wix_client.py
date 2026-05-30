@@ -9,6 +9,7 @@ from typing import Final
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.services.credentials import get_credential_provider
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class WixClient:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._credential_provider = get_credential_provider(settings)
 
     def check_in_ticket(
         self,
@@ -42,7 +44,8 @@ class WixClient:
         if self._settings.wix_mock_mode:
             return self._mock_checkin(ticket_number=ticket_number)
 
-        if not self._settings.wix_api_token:
+        wix_api_token = self._credential_provider.get_wix_api_token()
+        if not wix_api_token:
             return WixCheckinResult(
                 outcome="auth_error",
                 wix_status="auth_error",
@@ -59,7 +62,7 @@ class WixClient:
             "ticketNumber": [ticket_number],
         }
         headers = {
-            "Authorization": f"Bearer {self._settings.wix_api_token}",
+            "Authorization": f"Bearer {wix_api_token}",
             "Content-Type": "application/json",
             "X-Idempotency-Key": idempotency_key,
             "X-Correlation-ID": correlation_id,
@@ -110,12 +113,13 @@ class WixClient:
         if self._settings.wix_mock_mode:
             return self._mock_list_tickets(event_id=event_id)
 
-        if not self._settings.wix_api_token:
+        wix_api_token = self._credential_provider.get_wix_api_token()
+        if not wix_api_token:
             raise RuntimeError("Wix API token no configurado.")
 
         url = f"{self._settings.wix_base_url.rstrip('/')}/events/v1/tickets"
         headers = {
-            "Authorization": f"Bearer {self._settings.wix_api_token}",
+            "Authorization": f"Bearer {wix_api_token}",
         }
 
         offset = 0

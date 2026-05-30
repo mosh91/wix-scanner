@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,9 @@ class Settings(BaseSettings):
     wix_base_url: str = "https://www.wixapis.com"
     wix_checkin_path: str = "/events/v1/tickets/check-in"
     wix_api_token: str = ""
+    credential_provider_mode: Literal["env", "db"] = "env"
+    credential_db_path: str = "./data/credentials.db"
+    credential_encryption_key: str = "dev-credential-key-must-change"
     wix_timeout_ms: int = 2500
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150
@@ -26,6 +30,7 @@ class Settings(BaseSettings):
     manifest_cache_ttl_s: int = 86400
     offline_queue_max_attempts: int = 5
     offline_queue_worker_interval_s: int = 2
+    wix_webhook_secret: str = "dev-webhook-secret"
 
     model_config = SettingsConfigDict(
         env_file=".env",

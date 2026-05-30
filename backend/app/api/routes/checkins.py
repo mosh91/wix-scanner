@@ -100,79 +100,88 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         wix_idempotency = sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest()
         manifest.track_event(event_id)
 
-        wix_result = get_wix_client().check_in_ticket(
-            event_id=event_id,
-            ticket_number=ticket_number,
-            idempotency_key=wix_idempotency,
-            correlation_id=correlation_id,
-        )
-
-        if wix_result.outcome == "checked_in":
+        manifest_record = manifest.get_ticket(event_id=event_id, ticket_number=ticket_number)
+        if manifest_record is not None and manifest_record.manifest_state == "checked_in":
             offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
-            offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
-            manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
-            status = ScanStatus.checked_in
-            accepted = True
-            reason = wix_result.reason
-            error_code = wix_result.error_code
-            wix_status = wix_result.wix_status
-        elif wix_result.outcome == "already_checked_in":
-            offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
-            offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
-            manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
             status = ScanStatus.already_checked_in
             accepted = False
-            reason = wix_result.reason
-            error_code = wix_result.error_code
-            wix_status = wix_result.wix_status
-        elif wix_result.outcome in {"rate_limited", "upstream_error", "transient_error"}:
-            if offline_queue.is_manifest_ticket_known(event_id=event_id, ticket_number=ticket_number):
-                enqueue = offline_queue.enqueue_checkin(
-                    PendingCheckinJob(
-                        event_id=event_id,
-                        ticket_number=ticket_number,
-                        block_id=block_id,
-                        operation_type=operation_type,
-                        idempotency_key=wix_idempotency,
-                        correlation_id=correlation_id,
+            reason = "Ticket ya registrado via sincronizacion local."
+            error_code = "ALREADY_CHECKED_IN"
+            wix_status = "duplicate"
+        else:
+            wix_result = get_wix_client().check_in_ticket(
+                event_id=event_id,
+                ticket_number=ticket_number,
+                idempotency_key=wix_idempotency,
+                correlation_id=correlation_id,
+            )
+
+            if wix_result.outcome == "checked_in":
+                offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
+                offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+                manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
+                status = ScanStatus.checked_in
+                accepted = True
+                reason = wix_result.reason
+                error_code = wix_result.error_code
+                wix_status = wix_result.wix_status
+            elif wix_result.outcome == "already_checked_in":
+                offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
+                offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
+                manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
+                status = ScanStatus.already_checked_in
+                accepted = False
+                reason = wix_result.reason
+                error_code = wix_result.error_code
+                wix_status = wix_result.wix_status
+            elif wix_result.outcome in {"rate_limited", "upstream_error", "transient_error"}:
+                if offline_queue.is_manifest_ticket_known(event_id=event_id, ticket_number=ticket_number):
+                    enqueue = offline_queue.enqueue_checkin(
+                        PendingCheckinJob(
+                            event_id=event_id,
+                            ticket_number=ticket_number,
+                            block_id=block_id,
+                            operation_type=operation_type,
+                            idempotency_key=wix_idempotency,
+                            correlation_id=correlation_id,
+                        )
                     )
-                )
-                if enqueue.enqueued:
-                    status = ScanStatus.queued_offline
-                    accepted = True
-                    reason = "Ticket validado localmente. Check-in encolado para sincronizacion."
-                    error_code = "QUEUED_OFFLINE"
-                    wix_status = "queued_offline"
-                elif enqueue.reason == "already_processed":
-                    status = ScanStatus.already_checked_in
-                    accepted = False
-                    reason = "Ticket ya procesado previamente."
-                    error_code = "ALREADY_CHECKED_IN"
-                    wix_status = "duplicate"
+                    if enqueue.enqueued:
+                        status = ScanStatus.queued_offline
+                        accepted = True
+                        reason = "Ticket validado localmente. Check-in encolado para sincronizacion."
+                        error_code = "QUEUED_OFFLINE"
+                        wix_status = "queued_offline"
+                    elif enqueue.reason == "already_processed":
+                        status = ScanStatus.already_checked_in
+                        accepted = False
+                        reason = "Ticket ya procesado previamente."
+                        error_code = "ALREADY_CHECKED_IN"
+                        wix_status = "duplicate"
+                    else:
+                        status = ScanStatus.queued_offline
+                        accepted = True
+                        reason = "Ticket ya en cola offline."
+                        error_code = "ALREADY_QUEUED"
+                        wix_status = "queued_offline"
                 else:
-                    status = ScanStatus.queued_offline
-                    accepted = True
-                    reason = "Ticket ya en cola offline."
-                    error_code = "ALREADY_QUEUED"
-                    wix_status = "queued_offline"
+                    status = ScanStatus.invalid_ticket
+                    accepted = False
+                    reason = "No se encontro ticket en cache local para operar offline."
+                    error_code = wix_result.error_code
+                    wix_status = wix_result.wix_status
+            elif wix_result.outcome in {"auth_error"}:
+                status = ScanStatus.invalid_ticket
+                accepted = False
+                reason = wix_result.reason
+                error_code = wix_result.error_code
+                wix_status = wix_result.wix_status
             else:
                 status = ScanStatus.invalid_ticket
                 accepted = False
-                reason = "No se encontro ticket en cache local para operar offline."
+                reason = wix_result.reason
                 error_code = wix_result.error_code
                 wix_status = wix_result.wix_status
-        elif wix_result.outcome in {"auth_error"}:
-            status = ScanStatus.invalid_ticket
-            accepted = False
-            reason = wix_result.reason
-            error_code = wix_result.error_code
-            wix_status = wix_result.wix_status
-        else:
-            status = ScanStatus.invalid_ticket
-            accepted = False
-            reason = wix_result.reason
-            error_code = wix_result.error_code
-            wix_status = wix_result.wix_status
 
     idempotency_seed = f"{event_id}:{ticket_number}:{block_id}:{operation_type}"
     idempotency_key = sha1(idempotency_seed.encode("utf-8")).hexdigest()

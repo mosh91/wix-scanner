@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from time import time
+import hashlib
+import hmac
+import json
 
 from fastapi.testclient import TestClient
 import pytest
@@ -8,13 +11,30 @@ import pytest
 from app.main import app
 from app.services.offline_queue import get_offline_queue_service
 from app.services.ticket_manifest import get_ticket_manifest_service
+from app.services.checkin_webhooks import get_checkin_webhook_service
 from app.services.wix_client import WixCheckinResult
+from app.core.config import get_settings
 
 
 @pytest.fixture(autouse=True)
 def _reset_offline_queue_state() -> None:
     get_offline_queue_service().reset_for_tests()
     get_ticket_manifest_service().reset_for_tests()
+    get_checkin_webhook_service().reset_for_tests()
+
+
+def _signed_webhook_request(payload: dict[str, object]) -> tuple[dict[str, str], str]:
+    body_text = json.dumps(payload, separators=(",", ":"))
+    body = body_text.encode("utf-8")
+    secret = get_settings().wix_webhook_secret.encode("utf-8")
+    signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    return (
+        {
+            "Content-Type": "application/json",
+            "X-Wix-Signature": signature,
+        },
+        body_text,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -663,4 +683,171 @@ def test_scanner_health_reports_manifest_staleness_flag() -> None:
     fresh_health = client.get("/api/health/scanner", params={"event_id": event_id})
     assert fresh_health.status_code == 200
     assert fresh_health.json()["manifest_cache_stale"] is False
+
+
+# ---------------------------------------------------------------------------
+# P1-US-05c — Mobile app check-in webhook and real-time manifest updates
+# ---------------------------------------------------------------------------
+
+
+def test_webhook_signature_verification_failure_returns_401() -> None:
+    client = TestClient(app)
+    payload = {
+        "ticket_number": "SYNC-EVT1-001",
+        "wix_ticket_id": "wix-ticket-1",
+        "wix_event_id": "evt-webhook-1",
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-1",
+    }
+
+    response = client.post(
+        "/api/webhooks/wix/checkins",
+        headers={"Content-Type": "application/json", "X-Wix-Signature": "bad-signature"},
+        json=payload,
+    )
+    assert response.status_code == 401
+
+
+def test_webhook_updates_manifest_and_prevents_duplicate_kiosk_scan() -> None:
+    client = TestClient(app)
+    event_id = "evt-webhook-2"
+    sync_response = client.post("/api/manifest/sync", json={"event_id": event_id})
+    assert sync_response.status_code == 200
+
+    payload = {
+        "ticket_number": f"SYNC-{event_id[:4].upper()}-001",
+        "wix_ticket_id": "wix-ticket-2",
+        "wix_event_id": event_id,
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-2",
+    }
+
+    webhook_response = client.post(
+        "/api/webhooks/wix/checkins",
+        headers=_signed_webhook_request(payload)[0],
+        content=_signed_webhook_request(payload)[1],
+    )
+    assert webhook_response.status_code == 200
+    assert webhook_response.json()["outcome"] == "recorded"
+
+    lookup_response = client.get(
+        f"/api/manifest/events/{event_id}/tickets/{payload['ticket_number']}"
+    )
+    assert lookup_response.status_code == 200
+    assert lookup_response.json()["manifest_state"] == "checked_in"
+
+    scan_response = client.post(
+        "/api/checkins/scan",
+        json={"payload": f"eventId={event_id};ticketNumber={payload['ticket_number']}"},
+    )
+    assert scan_response.status_code == 200
+    assert scan_response.json()["status"] == "ALREADY_CHECKED_IN"
+
+
+def test_webhook_duplicate_delivery_records_single_checkin() -> None:
+    client = TestClient(app)
+    event_id = "evt-webhook-3"
+    client.post("/api/manifest/sync", json={"event_id": event_id})
+
+    payload = {
+        "ticket_number": f"SYNC-{event_id[:4].upper()}-001",
+        "wix_ticket_id": "wix-ticket-3",
+        "wix_event_id": event_id,
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-3",
+    }
+    headers, content = _signed_webhook_request(payload)
+
+    first = client.post("/api/webhooks/wix/checkins", headers=headers, content=content)
+    second = client.post("/api/webhooks/wix/checkins", headers=headers, content=content)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["outcome"] == "recorded"
+    assert second.json()["outcome"] == "duplicate"
+
+
+def test_webhook_unknown_event_is_acknowledged() -> None:
+    client = TestClient(app)
+    payload = {
+        "ticket_number": "UNK-0001",
+        "wix_ticket_id": "wix-ticket-unknown",
+        "wix_event_id": "evt-unknown-webhook",
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-unknown",
+    }
+
+    response = client.post(
+        "/api/webhooks/wix/checkins",
+        headers=_signed_webhook_request(payload)[0],
+        content=_signed_webhook_request(payload)[1],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "ignored_unknown_event"
+
+
+def test_webhook_history_and_retry_endpoints() -> None:
+    client = TestClient(app)
+    event_id = "evt-webhook-4"
+    client.post("/api/manifest/sync", json={"event_id": event_id})
+
+    payload = {
+        "ticket_number": f"SYNC-{event_id[:4].upper()}-001",
+        "wix_ticket_id": "wix-ticket-4",
+        "wix_event_id": event_id,
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-4",
+    }
+
+    created = client.post(
+        "/api/webhooks/wix/checkins",
+        headers=_signed_webhook_request(payload)[0],
+        content=_signed_webhook_request(payload)[1],
+    )
+    assert created.status_code == 200
+    delivery_id = int(created.json()["delivery_id"])
+
+    history = client.get("/api/webhooks/wix/checkins/history", params={"limit": 10})
+    assert history.status_code == 200
+    rows = history.json()
+    assert len(rows) >= 1
+    assert "status" in rows[0]
+
+    retry = client.post(f"/api/webhooks/wix/checkins/history/{delivery_id}/retry")
+    assert retry.status_code == 200
+    assert retry.json()["acknowledged"] is True
+
+
+def test_webhook_broadcasts_event_notification() -> None:
+    client = TestClient(app)
+    event_id = "evt-webhook-5"
+    client.post("/api/manifest/sync", json={"event_id": event_id})
+
+    payload = {
+        "ticket_number": f"SYNC-{event_id[:4].upper()}-001",
+        "wix_ticket_id": "wix-ticket-5",
+        "wix_event_id": event_id,
+        "checked_in_at": "2026-05-29T10:00:00Z",
+        "source": "wix_mobile",
+        "wix_request_id": "req-webhook-5",
+    }
+
+    with client.websocket_connect(f"/api/ws/events/{event_id}") as ws:
+        response = client.post(
+            "/api/webhooks/wix/checkins",
+            headers=_signed_webhook_request(payload)[0],
+            content=_signed_webhook_request(payload)[1],
+        )
+        assert response.status_code == 200
+        message = ws.receive_json()
+
+    assert message["kind"] == "wix_mobile_checkin"
+    assert message["event_id"] == event_id
+    assert message["ticket_number"] == payload["ticket_number"]
 

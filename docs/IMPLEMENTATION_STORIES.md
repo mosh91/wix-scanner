@@ -275,25 +275,25 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-05c: Mobile app check-in webhook and real-time manifest updates
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As the system, I want to receive real-time check-in events from Wix mobile app so the local ticket manifest stays synchronized and duplicate check-ins are prevented at the kiosk.
 
 Tasks:
-- Create webhook endpoint `POST /api/webhooks/wix/checkins` to receive mobile app check-in notifications from Wix.
-- Define webhook payload schema: { ticket_number, wix_ticket_id, wix_event_id, checked_in_at, source: "wix_mobile", wix_request_id }.
-- Implement webhook signature verification (Wix-signed header validation for security).
-- When webhook is received:
-  - Find the corresponding event by wix_event_id.
-  - Look up ticket in event_ticket_manifest by ticket_number.
-  - Update ticket manifest_state to `checked_in` and last_seen_scan_at to webhook timestamp.
-  - Create scan_event record with source `wix_mobile` and result `checked_in`.
-  - Create checkin_record with source tracking.
-  - Emit event to kiosk operator (broadcast to all active sessions for this event).
-- Add retry logic in Wix webhook delivery if your endpoint returns 5xx (Wix will retry automatically).
-- Add webhook endpoint logging and audit trail.
-- Provide UI admin panel to view webhook delivery history and manual webhook retry trigger.
+- [x] Create webhook endpoint `POST /api/webhooks/wix/checkins` to receive mobile app check-in notifications from Wix.
+- [x] Define webhook payload schema: { ticket_number, wix_ticket_id, wix_event_id, checked_in_at, source: "wix_mobile", wix_request_id }.
+- [x] Implement webhook signature verification (Wix-signed header validation for security).
+- [x] When webhook is received:
+  - [x] Find the corresponding event by wix_event_id.
+  - [x] Look up ticket in event_ticket_manifest by ticket_number.
+  - [x] Update ticket manifest_state to `checked_in` and last_seen_scan_at to webhook timestamp.
+  - [x] Create scan_event record with source `wix_mobile` and result `checked_in`.
+  - [x] Create checkin_record with source tracking.
+  - [x] Emit event to kiosk operator (broadcast to all active sessions for this event).
+- [x] Add retry logic in Wix webhook delivery if your endpoint returns 5xx (Wix will retry automatically).
+- [x] Add webhook endpoint logging and audit trail.
+- [x] Provide UI admin panel to view webhook delivery history and manual webhook retry trigger.
 
 Acceptance criteria:
 - Given Wix mobile app checks in a ticket, when webhook is received, then local ticket manifest is immediately updated to checked_in.
@@ -307,17 +307,17 @@ Acceptance criteria:
 ---
 
 ### Story P1-US-06: Credential provider abstraction (env/secrets manager/DB encrypted)
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a platform engineer, I want a credential abstraction layer so Wix auth can be sourced securely and rotated safely.
 
 Tasks:
-- Define credential provider interface.
-- Implement environment-variable provider.
-- Implement encrypted database provider scaffold.
-- Implement provider selection via configuration.
-- Ensure no secret values are logged.
+- [x] Define credential provider interface.
+- [x] Implement environment-variable provider.
+- [x] Implement encrypted database provider scaffold.
+- [x] Implement provider selection via configuration.
+- [x] Ensure no secret values are logged.
 
 Acceptance criteria:
 - Given provider mode is `env`, when Wix client initializes, then credentials are loaded from environment settings.

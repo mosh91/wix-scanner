@@ -35,6 +35,27 @@ export type ScanSubmitContext = {
   activeStationId?: string;
 };
 
+export type WebhookDeliveryRecord = {
+  id: number;
+  wix_request_id: string | null;
+  wix_event_id: string;
+  ticket_number: string;
+  source: string;
+  checked_in_at: string;
+  signature_valid: boolean;
+  status: string;
+  error_message: string | null;
+  received_at: number;
+  retried_from_id: number | null;
+};
+
+export type WebhookRetryResponse = {
+  acknowledged: boolean;
+  outcome: string;
+  message: string;
+  delivery_id: number;
+};
+
 // ─── Bootstrap API ──────────────────────────────────────────────────────────
 
 export const BOOTSTRAP_QR_PREFIX = "BOOTSTRAP:v1:";
@@ -130,4 +151,22 @@ export async function clearBootstrapSession(bootstrapSessionId: string): Promise
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bootstrap_session_id: bootstrapSessionId }),
   });
+}
+
+export async function fetchWebhookHistory(limit = 25): Promise<WebhookDeliveryRecord[]> {
+  const response = await fetch(`${API_BASE}/webhooks/wix/checkins/history?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`Webhook history failed with status ${response.status}`);
+  }
+  return (await response.json()) as WebhookDeliveryRecord[];
+}
+
+export async function retryWebhookDelivery(deliveryId: number): Promise<WebhookRetryResponse> {
+  const response = await fetch(`${API_BASE}/webhooks/wix/checkins/history/${deliveryId}/retry`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Webhook retry failed with status ${response.status}`);
+  }
+  return (await response.json()) as WebhookRetryResponse;
 }
