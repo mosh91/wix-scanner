@@ -577,22 +577,65 @@ CREATE TABLE scan_idempotency_records (
 ---
 
 ### Story P1-US-10: Relay-to-cloud contract and conflict semantics
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a developer, I want a clear relay/cloud protocol so delivery, retries, and conflict outcomes are predictable.
 
 Tasks:
-- Define relay payload schema including `scanEventId`, `relayId`, event context, and timestamps.
-- Define acknowledgement schema with accepted, duplicate, invalid, and conflict outcomes.
-- Add signed request verification between relay and cloud.
-- Define conflict policy for pre-checked tickets and out-of-window scans.
-- Add contract tests for protocol compatibility.
+- [x] Define relay payload schema including `scanEventId`, `relayId`, event context, and timestamps.
+- [x] Define acknowledgement schema with accepted, duplicate, invalid, and conflict outcomes.
+- [x] Add signed request verification between relay and cloud.
+- [x] Define conflict policy for pre-checked tickets and out-of-window scans.
+- [x] Add contract tests for protocol compatibility.
 
 Acceptance criteria:
-- Given valid relay payloads, when backend validates schema and signature, then request is accepted.
-- Given malformed or unsigned payloads, when backend receives them, then requests are rejected with explicit reason.
-- Given protocol version mismatch, when relay sends event, then compatibility behavior is deterministic and logged.
+- [x] Given valid relay payloads, when backend validates schema and signature, then request is accepted.
+- [x] Given malformed or unsigned payloads, when backend receives them, then requests are rejected with explicit reason.
+- [x] Given protocol version mismatch, when relay sends event, then compatibility behavior is deterministic and logged.
+
+**Contract Definition:**
+- Relay requests are forwarded to `POST /api/checkins/scan` with `source="relay"`, `scan_event_id`, `active_event_id`, and `relay_metadata` in the JSON body.
+- `relay_metadata` contains `relay_id`, `relay_request_id`, `protocol_version`, `sent_at`, `event_id`, and `ticket_number`.
+- Relay headers now include `Authorization: Bearer <relay_auth_token>`, `X-Relay-ID`, `X-Relay-Request-ID`, `X-Relay-Protocol-Version`, `X-Relay-Sent-At`, `X-Correlation-ID`, and `X-Relay-Signature`.
+- `X-Relay-Signature` is an HMAC-SHA256 signature over the canonical envelope: protocol version, relay id, relay request id, correlation id, sent_at, event_id, ticket_number, raw payload, and scan_event_id.
+
+**Acknowledgement Semantics:**
+- `accepted`: backend successfully processed the relay scan (`CHECKED_IN` or `QUEUED_OFFLINE`).
+- `duplicate`: backend detected an already-recorded `scan_event_id` and returned the cached result without new Wix side effects.
+- `invalid`: backend rejected the relay request because auth, signature, timestamp, or required metadata was missing/invalid, or the parsed scan was invalid.
+- `conflict`: backend rejected the relay request because protocol version was unsupported, relay metadata conflicted with parsed payload, or the ticket was already checked in.
+- Relay preserves delivery predictability by treating `400`, `401`, `409`, and `422` contract failures as `relay_rejected` with `retryable=false`; only transient failures remain queueable/retryable.
+
+**Conflict Policy:**
+- Pre-checked tickets (`ALREADY_CHECKED_IN`) map to relay acknowledgement outcome `conflict`.
+- Protocol version mismatch and relay payload/header mismatches map to `conflict` and are logged with structured metadata.
+- Malformed or unsigned relay requests map to `invalid` and are rejected immediately.
+- Out-of-window scans are reserved to map to `invalid` once a dedicated backend timing/window rejection status is introduced; the contract shape and ack taxonomy now support that extension without changing headers.
+
+**Implementation Summary:**
+- `relay/app/services/relay_contract.py` — canonical relay envelope + HMAC signature builder.
+- `relay/app/services/cloud_forwarder.py` — sends signed/versioned relay headers and structured `relay_metadata`; classifies permanent contract failures as non-retryable.
+- `relay/app/api/routes/scans.py` — exposes `cloud_contract_outcome` and avoids queueing non-retryable contract rejections.
+- `relay/app/services/relay_forwarder.py` — moves permanent contract rejections directly to DLQ instead of retrying.
+- `backend/app/services/relay_contract.py` — protocol version constant, HMAC verifier, and timestamp freshness check.
+- `backend/app/api/routes/checkins.py` — verifies bearer auth, signature, header/body consistency, timestamp skew, and version compatibility; returns `X-Relay-Ack-Outcome` + `X-Relay-Protocol-Version` for relay calls.
+- `relay/.env.example` and `backend/.env.example` — include shared relay auth/signing/version settings for local runs.
+
+**Contract Tests:**
+- `backend/tests/test_relay_contract.py` — 3 tests passing
+  - signed relay request accepted
+  - missing signature rejected with explicit reason
+  - protocol version mismatch returns deterministic conflict
+- `relay/tests/test_relay_contract.py` — 3 tests passing
+  - relay sender emits signed/versioned contract
+  - cloud contract rejection is classified non-retryable
+  - replay worker moves permanent contract rejection directly to DLQ
+
+**Validation:**
+- Relay: `python -m pytest tests/test_relay_endpoints.py tests/test_relay_deduplication_integration.py tests/test_relay_queue.py tests/test_relay_contract.py -q` → 26 passed
+- Backend: `python -m pytest tests/test_backend_scan_dedup_integration.py tests/test_scan_deduplication.py tests/test_relay_contract.py -q` → 15 passed
+- Verified: valid signed relay requests are accepted; malformed/unsigned relay requests are rejected with explicit reasons; protocol version mismatch produces deterministic `409 conflict` behavior and is not retried by the relay.
 
 ---
 

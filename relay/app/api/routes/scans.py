@@ -41,6 +41,7 @@ class RelayScansResponse(BaseModel):
     relay_request_id: str
     cloud_forwarded: bool
     queued_locally: bool
+    cloud_contract_outcome: str | None = None
     cloud_details: dict[str, object] = Field(default_factory=dict)
 
 
@@ -94,7 +95,7 @@ def submit_scan(
     forward_result = forwarder.forward_scan(
         event_id=request.event_id,
         ticket_number=request.ticket_number,
-        relay_id=relay_request_id,
+        relay_request_id=relay_request_id,
         payload=request.payload,
         correlation_id=correlation_id,
         scan_event_id=request.scan_event_id,
@@ -114,7 +115,7 @@ def submit_scan(
 
     # If cloud forwarding failed and we have a queue, enqueue locally
     relay_queue = get_relay_queue()
-    if not cloud_forwarded and relay_queue:
+    if not cloud_forwarded and forward_result.get("retryable", True) and relay_queue:
         queue_id = relay_queue.enqueue_scan(
             event_id=request.event_id,
             ticket_number=request.ticket_number,
@@ -132,6 +133,7 @@ def submit_scan(
             relay_request_id=relay_request_id,
             cloud_forwarded=False,
             queued_locally=True,
+            cloud_contract_outcome=forward_result.get("contract_outcome"),
             cloud_details={"queue_id": queue_id},
         )
 
@@ -142,6 +144,7 @@ def submit_scan(
         relay_request_id=relay_request_id,
         cloud_forwarded=cloud_forwarded,
         queued_locally=queued_locally,
+        cloud_contract_outcome=forward_result.get("contract_outcome"),
         cloud_details={k: v for k, v in forward_result.items() if k not in ("outcome", "message", "acknowledged")},
     )
 

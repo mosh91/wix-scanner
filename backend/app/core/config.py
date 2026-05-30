@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     offline_queue_max_attempts: int = 5
     offline_queue_worker_interval_s: int = 2
     wix_webhook_secret: str = "dev-webhook-secret"
+    relay_auth_token: str = "dev-relay-auth-token-change-in-production"
+    relay_signing_secret: str = "dev-relay-signing-secret-change-in-production"
+    relay_protocol_version: str = "2026-05-29"
 
     model_config = SettingsConfigDict(
         env_file=".env",

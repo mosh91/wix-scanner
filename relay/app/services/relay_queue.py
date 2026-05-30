@@ -140,7 +140,7 @@ class RelayQueueService:
                 relay_id=row["relay_id"],
                 payload=row["payload"],
                 correlation_id=row["correlation_id"],
-                scan_event_id=row.get("scan_event_id"),
+                scan_event_id=row["scan_event_id"] if "scan_event_id" in row.keys() else None,
                 attempt_count=row["attempt_count"],
                 last_error=row["last_error"],
                 created_at=row["created_at"],

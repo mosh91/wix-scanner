@@ -2,20 +2,29 @@ from __future__ import annotations
 
 from enum import Enum
 from hashlib import sha1
+import logging
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.config import get_settings
 from app.services.qr_parser import QRParseError, parse_qr_payload
 from app.services.offline_queue import PendingCheckinJob, get_offline_queue_service
+from app.services.relay_contract import (
+    SUPPORTED_RELAY_PROTOCOL_VERSION,
+    RelayContractEnvelope,
+    is_timestamp_fresh,
+    verify_signature,
+)
 from app.services.scan_idempotency import ScanIdempotencyService
 from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.wix_client import get_wix_client
 
 router = APIRouter(prefix="/checkins")
+logger = logging.getLogger(__name__)
 
 
 class ScanStatus(str, Enum):
@@ -35,8 +44,18 @@ class ScanRequest(BaseModel):
     # Bootstrap session context — supplied by an enrolled kiosk
     active_event_id: str | None = Field(default=None)
     active_station_id: str | None = Field(default=None)
+    relay_metadata: "RelayMetadata | None" = None
 
     model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class RelayMetadata(BaseModel):
+    relay_id: str = Field(min_length=1, max_length=128)
+    relay_request_id: str = Field(min_length=1, max_length=128)
+    protocol_version: str = Field(min_length=1, max_length=32)
+    sent_at: str = Field(min_length=1, max_length=64)
+    event_id: str = Field(min_length=1, max_length=128)
+    ticket_number: str = Field(min_length=1, max_length=128)
 
 
 class ScanResponse(BaseModel):
@@ -80,6 +99,135 @@ def set_scan_idempotency_service(service: ScanIdempotencyService) -> None:
     _scan_idempotency_service = service
 
 
+def _raise_relay_contract_error(
+    *,
+    response: Response,
+    status_code: int,
+    detail: str,
+    ack_outcome: str,
+) -> None:
+    raise HTTPException(
+        status_code=status_code,
+        detail=detail,
+        headers={
+            "X-Relay-Ack-Outcome": ack_outcome,
+            "X-Relay-Protocol-Version": SUPPORTED_RELAY_PROTOCOL_VERSION,
+        },
+    )
+
+
+def _set_relay_ack_headers(response: Response, ack_outcome: str) -> None:
+    response.headers["X-Relay-Ack-Outcome"] = ack_outcome
+    response.headers["X-Relay-Protocol-Version"] = SUPPORTED_RELAY_PROTOCOL_VERSION
+
+
+def _verify_relay_contract(
+    *,
+    request: ScanRequest,
+    response: Response,
+    authorization: str | None,
+    correlation_id: str,
+    x_relay_id: str | None,
+    x_relay_request_id: str | None,
+    x_relay_protocol_version: str | None,
+    x_relay_sent_at: str | None,
+    x_relay_signature: str | None,
+) -> None:
+    if x_relay_id is None and request.source != "relay":
+        return
+
+    settings = get_settings()
+    if authorization != f"Bearer {settings.relay_auth_token}":
+        logger.warning("relay.contract.invalid_auth", extra={"relay_id": x_relay_id})
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Relay authentication failed.",
+            ack_outcome="invalid",
+        )
+
+    if request.relay_metadata is None:
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Relay metadata missing from relay request.",
+            ack_outcome="invalid",
+        )
+
+    relay_metadata = request.relay_metadata
+    if x_relay_protocol_version != SUPPORTED_RELAY_PROTOCOL_VERSION or relay_metadata.protocol_version != SUPPORTED_RELAY_PROTOCOL_VERSION:
+        logger.warning(
+            "relay.contract.version_mismatch",
+            extra={"relay_id": x_relay_id, "requested_version": x_relay_protocol_version},
+        )
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Unsupported relay protocol version: {x_relay_protocol_version or relay_metadata.protocol_version}.",
+            ack_outcome="conflict",
+        )
+
+    if not x_relay_signature:
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Relay signature missing.",
+            ack_outcome="invalid",
+        )
+
+    if not x_relay_sent_at or x_relay_sent_at != relay_metadata.sent_at or not is_timestamp_fresh(x_relay_sent_at):
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Relay timestamp is missing or outside the allowed skew window.",
+            ack_outcome="invalid",
+        )
+
+    if request.scan_event_id is None:
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Relay requests must include scan_event_id.",
+            ack_outcome="invalid",
+        )
+
+    if x_relay_id != relay_metadata.relay_id or x_relay_request_id != relay_metadata.relay_request_id:
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Relay header metadata does not match request body.",
+            ack_outcome="invalid",
+        )
+
+    if request.active_event_id != relay_metadata.event_id:
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Relay event context mismatch.",
+            ack_outcome="invalid",
+        )
+
+    envelope = RelayContractEnvelope(
+        relay_id=relay_metadata.relay_id,
+        relay_request_id=relay_metadata.relay_request_id,
+        correlation_id=correlation_id,
+        protocol_version=relay_metadata.protocol_version,
+        sent_at=relay_metadata.sent_at,
+        event_id=relay_metadata.event_id,
+        ticket_number=relay_metadata.ticket_number,
+        payload=request.payload,
+        scan_event_id=request.scan_event_id,
+    )
+    if not verify_signature(settings.relay_signing_secret, envelope, x_relay_signature):
+        logger.warning("relay.contract.invalid_signature", extra={"relay_id": x_relay_id})
+        _raise_relay_contract_error(
+            response=response,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Relay signature verification failed.",
+            ack_outcome="invalid",
+        )
+
+
 @router.post("/manifest/cache", response_model=ManifestSeedResponse)
 def seed_manifest_cache(request: ManifestSeedRequest) -> ManifestSeedResponse:
     normalized = [ticket.strip().upper() for ticket in request.ticket_numbers if ticket.strip()]
@@ -88,9 +236,31 @@ def seed_manifest_cache(request: ManifestSeedRequest) -> ManifestSeedResponse:
 
 
 @router.post("/scan", response_model=ScanResponse)
-def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(default=None)) -> ScanResponse:
+def scan_ticket(
+    request: ScanRequest,
+    response: Response,
+    x_correlation_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+    x_relay_id: str | None = Header(default=None),
+    x_relay_request_id: str | None = Header(default=None),
+    x_relay_protocol_version: str | None = Header(default=None),
+    x_relay_sent_at: str | None = Header(default=None),
+    x_relay_signature: str | None = Header(default=None),
+) -> ScanResponse:
     started_at = scan_runtime_store.start_request()
     correlation_id = x_correlation_id or str(uuid4())
+
+    _verify_relay_contract(
+        request=request,
+        response=response,
+        authorization=authorization,
+        correlation_id=correlation_id,
+        x_relay_id=x_relay_id,
+        x_relay_request_id=x_relay_request_id,
+        x_relay_protocol_version=x_relay_protocol_version,
+        x_relay_sent_at=x_relay_sent_at,
+        x_relay_signature=x_relay_signature,
+    )
 
     # Check for duplicate using scan_event_id if available
     if request.scan_event_id:
@@ -102,6 +272,8 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
                 scan_event_id=request.scan_event_id,
             )
             if dup_check.is_duplicate and dup_check.previous_outcome:
+                if request.source == "relay":
+                    _set_relay_ack_headers(response, "duplicate")
                 # Return cached outcome for duplicate
                 return ScanResponse(
                     status=ScanStatus[dup_check.previous_outcome.lower()] if dup_check.previous_outcome in [s.value for s in ScanStatus] else ScanStatus.invalid_ticket,
@@ -137,6 +309,13 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         block_id = parsed.block_id
         operation_type = parsed.operation_type
         ticket_number = parsed.ticket_number
+        if request.relay_metadata is not None and request.relay_metadata.ticket_number != ticket_number:
+            _raise_relay_contract_error(
+                response=response,
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Relay ticket context does not match parsed payload.",
+                ack_outcome="conflict",
+            )
         wix_idempotency = sha1(f"{event_id}:{ticket_number}:{block_id}:{operation_type}".encode("utf-8")).hexdigest()
         manifest.track_event(event_id)
 
@@ -246,7 +425,7 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         reason=reason,
     )
 
-    response = ScanResponse(
+    scan_response = ScanResponse(
         status=status,
         accepted=accepted,
         event_id=event_id,
@@ -261,8 +440,16 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
         correlation_id=correlation_id,
     )
 
+    if request.source == "relay":
+        ack_outcome = "accepted"
+        if status == ScanStatus.invalid_ticket:
+            ack_outcome = "invalid"
+        elif status == ScanStatus.already_checked_in:
+            ack_outcome = "conflict"
+        _set_relay_ack_headers(response, ack_outcome)
+
     with _idempotency_lock:
-        _idempotency_responses[idempotency_key] = response
+        _idempotency_responses[idempotency_key] = scan_response
 
     # Record in scan dedup ledger if scan_event_id provided
     if request.scan_event_id:
@@ -277,4 +464,4 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
                 error_message=reason,
             )
 
-    return response
+    return scan_response

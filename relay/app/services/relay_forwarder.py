@@ -58,7 +58,7 @@ class RelayForwarder:
                 result = self._forwarder.forward_scan(
                     event_id=scan.event_id,
                     ticket_number=scan.ticket_number,
-                    relay_id=scan.relay_id,
+                    relay_request_id=scan.relay_id,
                     payload=scan.payload,
                     correlation_id=scan.correlation_id,
                     scan_event_id=scan.scan_event_id,
@@ -75,6 +75,13 @@ class RelayForwarder:
                     )
                     self._queue.mark_scan_forwarded(scan.id)
                     stats["forwarded"] += 1
+                elif result.get("retryable", True) is False:
+                    self._queue.move_to_dlq(
+                        scan.id,
+                        "contract_rejected",
+                        str(result.get("message", "relay_contract_rejected")),
+                    )
+                    stats["moved_to_dlq"] += 1
                 else:
                     # Transient error or cloud unavailable
                     self._queue.increment_attempt(scan.id, str(result.get("message", "transient_error")))

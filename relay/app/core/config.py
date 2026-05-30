@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     port: int = 9000
     # Relay authentication token (bearer token sent to cloud backend).
     relay_auth_token: str = "dev-relay-auth-token-change-in-production"
+    relay_signing_secret: str = "dev-relay-signing-secret-change-in-production"
+    relay_instance_id: str = "relay-dev-1"
+    relay_protocol_version: str = "2026-05-29"
     # Cloud backend base URL for forwarding scans.
     cloud_base_url: str = "http://localhost:8000/api"
     # Request timeout for cloud backend calls.

@@ -9,9 +9,12 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import app
+from app.api.routes.scans import set_relay_idempotency
 from app.services.cloud_forwarder import CloudForwarder
 from app.services.relay_forwarder import RelayForwarder
+from app.services.relay_idempotency import RelayIdempotencyService
 from app.services.relay_queue import RelayQueueService
+from app.services.relay_queue_service import set_relay_queue
 
 
 @pytest.fixture
@@ -42,7 +45,12 @@ def forwarder(queue_service: RelayQueueService, mock_cloud_forwarder: CloudForwa
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        queue_service = RelayQueueService(db_path=str(Path(tmpdir) / "relay_queue.db"), max_attempts=3)
+        idem_service = RelayIdempotencyService(db_path=str(Path(tmpdir) / "relay_idempotency.db"))
+        set_relay_queue(queue_service)
+        set_relay_idempotency(idem_service)
+        yield TestClient(app)
 
 
 class TestRelayQueue:
@@ -205,6 +213,7 @@ class TestRelayEndpointsWithQueue:
         payload = {
             "event_id": "evt-queue-1",
             "ticket_number": "QUEUE-001",
+            "scan_event_id": "550e8400-e29b-41d4-a716-446655440020",
             "payload": "eventId=evt-queue-1;ticketNumber=QUEUE-001",
         }
 
@@ -242,6 +251,7 @@ class TestRelayEndpointsWithQueue:
             payload = {
                 "event_id": f"evt-{i}",
                 "ticket_number": f"TICKET-{i:03d}",
+                "scan_event_id": f"550e8400-e29b-41d4-a716-44665544002{i}",
                 "payload": f"eventId=evt-{i};ticketNumber=TICKET-{i:03d}",
             }
             response = client.post("/api/relay/scans", json=payload)
