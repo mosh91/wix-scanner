@@ -7,14 +7,30 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from app.services.cloud_forwarder import get_cloud_forwarder
+from app.services.relay_idempotency import RelayIdempotencyService
 from app.services.relay_queue_service import get_relay_queue
 
 router = APIRouter(prefix="/relay")
+
+# Global relay idempotency service (initialized in main.py lifespan)
+_relay_idempotency: RelayIdempotencyService | None = None
+
+
+def get_relay_idempotency() -> RelayIdempotencyService | None:
+    """Get relay idempotency service."""
+    return _relay_idempotency
+
+
+def set_relay_idempotency(service: RelayIdempotencyService) -> None:
+    """Set relay idempotency service."""
+    global _relay_idempotency
+    _relay_idempotency = service
 
 
 class RelaySubmitRequest(BaseModel):
     event_id: str = Field(min_length=1, max_length=128)
     ticket_number: str = Field(min_length=1, max_length=128)
+    scan_event_id: str = Field(min_length=36, max_length=36, description="UUIDv4 scan event ID from frontend")
     payload: str = Field(min_length=1, max_length=512)
 
 
@@ -54,9 +70,25 @@ def submit_scan(
     request: RelaySubmitRequest,
     x_correlation_id: str | None = Header(default=None),
 ) -> RelayScansResponse:
-    """Accept a scan from local station, forward to cloud, or queue if unreachable."""
+    """Accept a scan from local station, check for duplicates, forward to cloud, or queue if unreachable."""
     relay_request_id = str(uuid4())
     correlation_id = x_correlation_id or relay_request_id
+
+    # Check relay idempotency ledger
+    relay_idem = get_relay_idempotency()
+    if relay_idem:
+        existing = relay_idem.find_by_scan_event_id(request.scan_event_id)
+        if existing:
+            # Duplicate detected; return cached outcome
+            return RelayScansResponse(
+                acknowledged=True,
+                outcome=f"relay_duplicate ({existing.outcome})",
+                message=f"Scan already processed with outcome: {existing.outcome}",
+                relay_request_id=relay_request_id,
+                cloud_forwarded=existing.outcome == "forwarded",
+                queued_locally=existing.outcome == "queued",
+                cloud_details={"cached_outcome": existing.outcome},
+            )
 
     forwarder = get_cloud_forwarder()
     forward_result = forwarder.forward_scan(
@@ -65,10 +97,20 @@ def submit_scan(
         relay_id=relay_request_id,
         payload=request.payload,
         correlation_id=correlation_id,
+        scan_event_id=request.scan_event_id,
     )
 
     cloud_forwarded = forward_result.get("outcome") == "forwarded"
     queued_locally = False
+
+    # Record in relay idempotency ledger
+    if relay_idem:
+        outcome = "forwarded" if cloud_forwarded else "queued"
+        relay_idem.record_scan(
+            scan_event_id=request.scan_event_id,
+            relay_id=relay_request_id,
+            outcome=outcome,
+        )
 
     # If cloud forwarding failed and we have a queue, enqueue locally
     relay_queue = get_relay_queue()
@@ -79,6 +121,7 @@ def submit_scan(
             relay_id=relay_request_id,
             payload=request.payload,
             correlation_id=correlation_id,
+            scan_event_id=request.scan_event_id,
         )
         queued_locally = True
 

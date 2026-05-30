@@ -80,6 +80,8 @@ export default function OperatorPage() {
   const { session, enrolled, enroll, clearSession } = useKioskSession();
   const [sessionId] = useState(() => `session-${crypto.randomUUID()}`);
   const [operatorId] = useState("operator-local");
+  // Global idempotency key per scan event (UUIDv7-like - using crypto.randomUUID for simplicity)
+  const generateScanEventId = () => crypto.randomUUID();
 
   // Initial mode depends on enrollment state (evaluated synchronously on first render).
   const [mode, setMode] = useState<KioskMode>(enrolled ? "idle" : "bootstrap-idle");
@@ -90,6 +92,7 @@ export default function OperatorPage() {
   const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<ScanHistoryItem | null>(null);
   const isFirstMountRef = useRef(true);
+  const focusLostToastIdRef = useRef<string | number | null>(null);
 
   const webhid = useWebHIDScannerHealth();
   const backendHealth = useBackendScannerHealth(session?.activeEventId);
@@ -213,11 +216,19 @@ export default function OperatorPage() {
   }, [scanHistory]);
 
   useEffect(() => {
-    const onFocus = () => setIsWindowFocused(true);
+    const onFocus = () => {
+      setIsWindowFocused(true);
+      if (focusLostToastIdRef.current !== null) {
+        toast.dismiss(focusLostToastIdRef.current);
+        focusLostToastIdRef.current = null;
+      }
+    };
     const onBlur = () => {
       setIsWindowFocused(false);
       setMode("idle");
-      toast.warning(t("operator.focusLost"));
+      focusLostToastIdRef.current = toast.warning(t("operator.focusLost"), {
+        duration: Infinity,
+      });
     };
 
     window.addEventListener("focus", onFocus);
@@ -290,10 +301,12 @@ export default function OperatorPage() {
     }, 300);
 
     try {
+      const scanEventId = generateScanEventId();
       const result = await submitScan(payload, {
         source: "hid",
         sessionId,
         operatorId,
+        scanEventId,
         scannerStatus: webhid.connected ? "connected" : "disconnected",
         activeEventId: session?.activeEventId,
         activeStationId: session?.activeStationId,

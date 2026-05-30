@@ -11,8 +11,10 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.services.offline_queue import get_offline_queue_service
 from app.middleware.request_timing import RequestTimingMiddleware
+from app.services.scan_idempotency import ScanIdempotencyService
 from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
+from app.api.routes.checkins import set_scan_idempotency_service
 
 
 async def _cleanup_loop() -> None:
@@ -40,6 +42,11 @@ async def _manifest_sync_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    # Initialize scan idempotency service
+    settings = get_settings()
+    scan_idempotency = ScanIdempotencyService(db_url=settings.database_url)
+    set_scan_idempotency_service(scan_idempotency)
+
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())
     manifest_sync_task = asyncio.create_task(_manifest_sync_loop())

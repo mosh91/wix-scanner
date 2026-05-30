@@ -23,6 +23,7 @@ class CloudForwarder:
         relay_id: str,
         payload: str,
         correlation_id: str,
+        scan_event_id: str | None = None,
     ) -> dict[str, object]:
         """Forward a scan to the cloud backend and return acknowledgement."""
         if not self._settings.cloud_base_url.strip():
@@ -41,12 +42,16 @@ class CloudForwarder:
             "X-Correlation-ID": correlation_id,
         }
 
+        body = {"payload": payload}
+        if scan_event_id:
+            body["scan_event_id"] = scan_event_id
+
         try:
             with httpx.Client(timeout=self._settings.cloud_request_timeout_ms / 1000.0) as client:
                 response = client.post(
                     url,
                     headers=headers,
-                    json={"payload": payload},
+                    json=body,
                 )
 
             if response.status_code >= 200 and response.status_code < 300:

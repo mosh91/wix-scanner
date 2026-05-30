@@ -11,8 +11,10 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.services.cloud_forwarder import get_cloud_forwarder
 from app.services.relay_forwarder import RelayForwarder
+from app.services.relay_idempotency import RelayIdempotencyService
 from app.services.relay_queue import RelayQueueService
 from app.services.relay_queue_service import set_relay_queue
+from app.api.routes.scans import set_relay_idempotency
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -29,6 +31,11 @@ async def lifespan(app: FastAPI):
     # Startup
     relay_queue = RelayQueueService(db_path=settings.queue_db_path)
     set_relay_queue(relay_queue)
+
+    # Initialize relay idempotency service
+    idempotency_db_path = settings.queue_db_path.replace("relay_queue.db", "relay_idempotency.db")
+    relay_idempotency = RelayIdempotencyService(db_path=idempotency_db_path)
+    set_relay_idempotency(relay_idempotency)
 
     relay_forwarder = RelayForwarder(
         queue_service=relay_queue,

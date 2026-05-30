@@ -30,6 +30,7 @@ export type ScanSubmitContext = {
   source?: string;
   sessionId?: string;
   operatorId?: string;
+  scanEventId?: string;
   scannerStatus?: string;
   activeEventId?: string;
   activeStationId?: string;
@@ -89,6 +90,7 @@ export async function submitScan(payload: string, context: ScanSubmitContext = {
     source = "hid",
     sessionId = "session-local",
     operatorId = "operator-local",
+    scanEventId = crypto.randomUUID(),
     scannerStatus = "connected",
     activeEventId,
     activeStationId,
@@ -103,6 +105,7 @@ export async function submitScan(payload: string, context: ScanSubmitContext = {
       source,
       session_id: sessionId,
       operator_id: operatorId,
+      scan_event_id: scanEventId,
       scanner_status: scannerStatus,
       active_event_id: activeEventId ?? null,
       active_station_id: activeStationId ?? null,

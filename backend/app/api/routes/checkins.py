@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.qr_parser import QRParseError, parse_qr_payload
 from app.services.offline_queue import PendingCheckinJob, get_offline_queue_service
+from app.services.scan_idempotency import ScanIdempotencyService
 from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.wix_client import get_wix_client
@@ -30,6 +31,7 @@ class ScanRequest(BaseModel):
     session_id: str = Field(default="session-local")
     operator_id: str = Field(default="operator-local")
     scanner_status: str = Field(default="connected")
+    scan_event_id: str | None = Field(default=None, description="UUIDv4 from frontend for deduplication")
     # Bootstrap session context — supplied by an enrolled kiosk
     active_event_id: str | None = Field(default=None)
     active_station_id: str | None = Field(default=None)
@@ -64,6 +66,18 @@ class ManifestSeedResponse(BaseModel):
 
 _idempotency_lock = Lock()
 _idempotency_responses: dict[str, ScanResponse] = {}
+_scan_idempotency_service: ScanIdempotencyService | None = None
+
+
+def get_scan_idempotency_service() -> ScanIdempotencyService | None:
+    """Get the scan idempotency service."""
+    return _scan_idempotency_service
+
+
+def set_scan_idempotency_service(service: ScanIdempotencyService) -> None:
+    """Set the scan idempotency service."""
+    global _scan_idempotency_service
+    _scan_idempotency_service = service
 
 
 @router.post("/manifest/cache", response_model=ManifestSeedResponse)
@@ -77,6 +91,32 @@ def seed_manifest_cache(request: ManifestSeedRequest) -> ManifestSeedResponse:
 def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(default=None)) -> ScanResponse:
     started_at = scan_runtime_store.start_request()
     correlation_id = x_correlation_id or str(uuid4())
+
+    # Check for duplicate using scan_event_id if available
+    if request.scan_event_id:
+        idem_service = get_scan_idempotency_service()
+        if idem_service:
+            dup_check = idem_service.check_duplicate(
+                event_id=request.active_event_id or "demo-event",
+                ticket_number="",  # Will be populated after parsing
+                scan_event_id=request.scan_event_id,
+            )
+            if dup_check.is_duplicate and dup_check.previous_outcome:
+                # Return cached outcome for duplicate
+                return ScanResponse(
+                    status=ScanStatus[dup_check.previous_outcome.lower()] if dup_check.previous_outcome in [s.value for s in ScanStatus] else ScanStatus.invalid_ticket,
+                    accepted=dup_check.previous_outcome in ["checked_in", "queued_offline"],
+                    event_id=request.active_event_id or "demo-event",
+                    block_id="general",
+                    operation_type="checkin",
+                    ticket_number="",
+                    reason="Duplicate scan event detected",
+                    error_code="DUPLICATE_EVENT",
+                    wix_status="duplicate",
+                    response_time_ms=0,
+                    idempotency_key="",
+                    correlation_id=correlation_id,
+                )
 
     try:
         parsed = parse_qr_payload(request.payload, active_event_id=request.active_event_id)
@@ -223,5 +263,18 @@ def scan_ticket(request: ScanRequest, x_correlation_id: str | None = Header(defa
 
     with _idempotency_lock:
         _idempotency_responses[idempotency_key] = response
+
+    # Record in scan dedup ledger if scan_event_id provided
+    if request.scan_event_id:
+        idem_service = get_scan_idempotency_service()
+        if idem_service:
+            idem_service.record_scan(
+                event_id=event_id,
+                ticket_number=ticket_number,
+                scan_event_id=request.scan_event_id,
+                outcome=status.value,
+                source=request.source,
+                error_message=reason,
+            )
 
     return response

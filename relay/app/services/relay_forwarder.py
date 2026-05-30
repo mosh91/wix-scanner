@@ -61,6 +61,7 @@ class RelayForwarder:
                     relay_id=scan.relay_id,
                     payload=scan.payload,
                     correlation_id=scan.correlation_id,
+                    scan_event_id=scan.scan_event_id,
                 )
 
                 if result.get("outcome") == "forwarded":

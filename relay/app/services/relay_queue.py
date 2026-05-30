@@ -19,10 +19,11 @@ class QueuedScanEvent:
     relay_id: str
     payload: str
     correlation_id: str
-    attempt_count: int
-    last_error: str | None
-    created_at: str
-    updated_at: str
+    scan_event_id: str | None = None
+    attempt_count: int = 0
+    last_error: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
 
 
 @dataclass
@@ -58,6 +59,7 @@ class RelayQueueService:
                     relay_id TEXT NOT NULL,
                     payload TEXT NOT NULL,
                     correlation_id TEXT NOT NULL,
+                    scan_event_id TEXT,
                     attempt_count INTEGER DEFAULT 0,
                     last_error TEXT,
                     created_at TEXT NOT NULL,
@@ -97,6 +99,7 @@ class RelayQueueService:
         relay_id: str,
         payload: str,
         correlation_id: str,
+        scan_event_id: str | None = None,
     ) -> str:
         """Queue a scan for forwarding. Returns queue entry ID."""
         queue_id = str(uuid4())
@@ -106,10 +109,10 @@ class RelayQueueService:
             conn.execute(
                 """
                 INSERT INTO queued_scans
-                (id, event_id, ticket_number, relay_id, payload, correlation_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, event_id, ticket_number, relay_id, payload, correlation_id, scan_event_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (queue_id, event_id, ticket_number, relay_id, payload, correlation_id, now, now),
+                (queue_id, event_id, ticket_number, relay_id, payload, correlation_id, scan_event_id, now, now),
             )
             conn.commit()
 
@@ -137,6 +140,7 @@ class RelayQueueService:
                 relay_id=row["relay_id"],
                 payload=row["payload"],
                 correlation_id=row["correlation_id"],
+                scan_event_id=row.get("scan_event_id"),
                 attempt_count=row["attempt_count"],
                 last_error=row["last_error"],
                 created_at=row["created_at"],
