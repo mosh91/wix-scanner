@@ -431,3 +431,121 @@ CREATE TABLE audit_log (
 
 CREATE INDEX idx_audit_log_created_at ON audit_log (created_at DESC);
 CREATE INDEX idx_audit_log_resource ON audit_log (resource_type, resource_id);
+
+-- ===== Runtime tables created by backend services (SQLAlchemy) =====
+
+CREATE TABLE IF NOT EXISTS scan_idempotency (
+  id SERIAL PRIMARY KEY,
+  event_id VARCHAR(255) NOT NULL,
+  ticket_number VARCHAR(255) NOT NULL,
+  scan_event_id VARCHAR(36) UNIQUE NOT NULL,
+  wix_check_in_id VARCHAR(255),
+  outcome VARCHAR(100) NOT NULL,
+  error_message VARCHAR(512),
+  source VARCHAR(50),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_scan_idem UNIQUE (event_id, ticket_number, scan_event_id)
+);
+
+CREATE TABLE IF NOT EXISTS wix_sync_controls (
+  event_id TEXT PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  interval_seconds INTEGER NOT NULL DEFAULT 300,
+  last_successful_sync_at DOUBLE PRECISION,
+  last_attempt_at DOUBLE PRECISION,
+  last_error TEXT,
+  created_at DOUBLE PRECISION NOT NULL,
+  updated_at DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reset_audit (
+  reset_id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  records_cleared INTEGER NOT NULL DEFAULT 0,
+  performed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reset_audit_scope_id ON reset_audit (scope_id);
+
+CREATE TABLE IF NOT EXISTS credential_lifecycle (
+  credential_id TEXT PRIMARY KEY,
+  profile_name TEXT NOT NULL,
+  auth_mode TEXT NOT NULL,
+  lifecycle_state TEXT NOT NULL DEFAULT 'created',
+  created_at TEXT NOT NULL,
+  validated_at TEXT,
+  activated_at TEXT,
+  last_validated_at TEXT,
+  validation_error TEXT,
+  expires_at TEXT,
+  rotation_note TEXT,
+  created_by_actor TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS credential_lifecycle_events (
+  event_id TEXT PRIMARY KEY,
+  credential_id TEXT NOT NULL,
+  from_state TEXT,
+  to_state TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  event_note TEXT,
+  occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cle_credential_id ON credential_lifecycle_events (credential_id);
+
+CREATE TABLE IF NOT EXISTS wix_scope_audit (
+  audit_id TEXT PRIMARY KEY,
+  binding_id TEXT NOT NULL,
+  wix_site_id TEXT NOT NULL,
+  wix_event_id TEXT NOT NULL,
+  required_scopes TEXT NOT NULL,
+  verified_scopes TEXT NOT NULL,
+  missing_scopes TEXT NOT NULL,
+  status TEXT NOT NULL,
+  alert_reason TEXT,
+  scopes_verified_at TEXT NOT NULL,
+  verified_by_actor TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wix_scope_audit_binding_id ON wix_scope_audit (binding_id);
+CREATE INDEX IF NOT EXISTS idx_wix_scope_audit_created_at ON wix_scope_audit (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id SERIAL PRIMARY KEY,
+  wix_request_id TEXT,
+  wix_event_id TEXT NOT NULL,
+  ticket_number TEXT NOT NULL,
+  source TEXT NOT NULL,
+  checked_in_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  signature_valid INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  error_message TEXT,
+  received_at DOUBLE PRECISION NOT NULL,
+  retried_from_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS scan_events (
+  id SERIAL PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  ticket_number TEXT NOT NULL,
+  source TEXT NOT NULL,
+  result TEXT NOT NULL,
+  wix_request_id TEXT,
+  created_at DOUBLE PRECISION NOT NULL,
+  CONSTRAINT uq_scan_events UNIQUE (event_id, ticket_number, source, result)
+);
+
+CREATE TABLE IF NOT EXISTS checkin_records (
+  id SERIAL PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  ticket_number TEXT NOT NULL,
+  source TEXT NOT NULL,
+  wix_ticket_id TEXT,
+  wix_request_id TEXT,
+  checked_in_at TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL,
+  CONSTRAINT uq_checkin_records UNIQUE (event_id, ticket_number)
+);

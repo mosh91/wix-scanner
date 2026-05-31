@@ -1014,6 +1014,40 @@ Acceptance criteria:
 
 ---
 
+### Story P2-US-10: Migrate remaining SQLite services to Postgres
+Status: `Not Started`
+
+User story:
+As a platform engineer, I want all backend services to use the shared Postgres database so that the system has a single authoritative data store, proper relational integrity, and no leftover SQLite files in production.
+
+Context:
+Five services were intentionally deferred from the Phase 1 SQLite → Postgres migration because their local table names conflict with canonical schema column definitions or require coordinated schema alignment. These services currently write to separate SQLite files via raw `sqlite3` calls. Before production deployment they must be migrated to SQLAlchemy + Postgres using the canonical table schemas defined in `docs/DB_SCHEMA.sql`.
+
+Services to migrate:
+- `reconciliation.py` — tables `reconciliation_run`, `reconciliation_item` (canonical schema has different column structure)
+- `ticket_manifest.py` — table `event_ticket_manifest` (canonical schema has different column types)
+- `site_event_binding.py` — table `wix_site_event_binding` (canonical schema differs)
+- `event_block_config.py` — table `event_block` (one canonical table name conflicts)
+- `auth_settings.py` — tables `auth_token_runtime`, `auth_api_key_settings` (uses XOR encryption; security-sensitive, defer only if alignment is non-trivial)
+
+Tasks:
+- Align each service's local schema to the canonical `DB_SCHEMA.sql` definition; update `DB_SCHEMA.sql` where the canonical definition needs correction.
+- Migrate each service from `sqlite3` raw SQL to SQLAlchemy ORM using the `make_engine` / `make_session_factory` pattern from `backend/app/db.py`.
+- Accept both `db_path` (backward-compat for tests) and `db_url` in each service constructor; default to `settings.database_url`.
+- Update `main.py` lifespan initializers to remove SQLite path references for each migrated service.
+- Apply schema changes to the running Postgres container and verify `create_all()` is idempotent.
+- Remove now-unused `*_db_path` settings from `Settings` for each migrated service after all tests pass.
+- Run full backend test suite and confirm 154+ tests pass with no regressions.
+
+Acceptance criteria:
+- Given the backend container starts, when any of the five services initialise, then they connect to Postgres (not a local SQLite file).
+- Given a migration is applied, when `DB_SCHEMA.sql` is run on a fresh Postgres instance, then all tables exist with correct columns.
+- Given the existing test suite runs, when each service test uses a `db_path` fixture, then the SQLite backward-compat path is exercised and all tests pass.
+- Given `Settings` is inspected after the migration, when unused `*_db_path` fields are checked, then none remain for migrated services.
+- Given `auth_settings.py` uses XOR encryption, when migrated, then the encryption logic is preserved exactly and no plaintext secrets appear in Postgres.
+
+---
+
 ## Phase 3: Metrics, Monitoring, and Reconciliation Visibility
 
 ### Story P3-US-01: Metrics and health dashboard implementation
@@ -1401,6 +1435,7 @@ Acceptance criteria:
 24. P2-US-07
 25. P2-US-08
 26. P2-US-09
+27. P2-US-10
 27. P2-US-03
 28. P3-US-01
 29. P3-US-02

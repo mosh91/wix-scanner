@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -62,13 +61,8 @@ async def _manifest_sync_loop() -> None:
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # Initialize scan idempotency service
     settings = get_settings()
-    database_url = getattr(settings, "database_url", None)
-    if not database_url:
-        default_scan_db = Path("./data/scan_idempotency.db")
-        default_scan_db.parent.mkdir(parents=True, exist_ok=True)
-        database_url = f"sqlite:///{default_scan_db.resolve()}"
-    startup_logger.info("scan_idempotency initialized with db_url=%s", database_url)
-    scan_idempotency = ScanIdempotencyService(db_url=database_url)
+    startup_logger.info("scan_idempotency initialized with db_url=%s", settings.database_url)
+    scan_idempotency = ScanIdempotencyService(db_url=settings.database_url)
     set_scan_idempotency_service(scan_idempotency)
 
     # Initialize event block config service
@@ -76,15 +70,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     set_event_block_config_service(event_block_svc)
     startup_logger.info("event_block_config initialized with db_path=%s", settings.event_block_config_db_path)
 
-    # Initialize reset audit service
-    reset_audit_svc = ResetAuditService(db_path=settings.reset_audit_db_path)
+    # Initialize reset audit service (Postgres)
+    reset_audit_svc = ResetAuditService()
     set_reset_audit_service(reset_audit_svc)
-    startup_logger.info("reset_audit initialized with db_path=%s", settings.reset_audit_db_path)
+    startup_logger.info("reset_audit initialized with database_url=%s", settings.database_url)
 
-    # Initialize sync controls service
-    sync_controls_svc = WixSyncControlService(db_path=settings.sync_controls_db_path)
+    # Initialize sync controls service (Postgres)
+    sync_controls_svc = WixSyncControlService(settings=settings)
     set_sync_control_service(sync_controls_svc)
-    startup_logger.info("sync_controls initialized with db_path=%s", settings.sync_controls_db_path)
+    startup_logger.info("sync_controls initialized with database_url=%s", settings.database_url)
 
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())

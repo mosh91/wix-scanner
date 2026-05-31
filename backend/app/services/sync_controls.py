@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
 
+from sqlalchemy import Boolean, Column, Float, Integer, String
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 from app.core.config import Settings, get_settings
+from app.db import make_engine
 from app.services.ticket_manifest import get_ticket_manifest_service
+
+Base = declarative_base()
 
 
 @dataclass(frozen=True)
@@ -21,57 +26,57 @@ class WixSyncControlRecord:
     updated_at: float
 
 
+class _WixSyncControl(Base):
+    __tablename__ = "wix_sync_controls"
+
+    event_id = Column(String, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    interval_seconds = Column(Integer, nullable=False, default=60)
+    last_successful_sync_at = Column(Float, nullable=True)
+    last_attempt_at = Column(Float, nullable=True)
+    last_error = Column(String, nullable=True)
+    created_at = Column(Float, nullable=False)
+    updated_at = Column(Float, nullable=False)
+
+
 class WixSyncControlService:
-    def __init__(self, *, db_path: str, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        db_path: str | None = None,
+        db_url: str | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self._settings = settings or get_settings()
-        self._db_path = str(Path(db_path))
-        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+        if db_url:
+            url = db_url
+        elif db_path:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            url = f"sqlite:///{Path(db_path).resolve()}"
+        else:
+            url = self._settings.database_url
+        self._engine = make_engine(url)
+        Base.metadata.create_all(self._engine)
+        self._Session = sessionmaker(bind=self._engine, autoflush=False, autocommit=False)
 
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS wix_sync_controls (
-                    event_id TEXT PRIMARY KEY,
-                    enabled INTEGER NOT NULL,
-                    interval_seconds INTEGER NOT NULL,
-                    last_successful_sync_at REAL,
-                    last_attempt_at REAL,
-                    last_error TEXT,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                )
-                """
-            )
-            conn.commit()
-
-    def _to_record(self, row: sqlite3.Row, now_ts: float) -> WixSyncControlRecord:
-        last_successful = float(row["last_successful_sync_at"]) if row["last_successful_sync_at"] is not None else None
+    def _to_record(self, row: _WixSyncControl, now_ts: float) -> WixSyncControlRecord:
+        last_successful = float(row.last_successful_sync_at) if row.last_successful_sync_at is not None else None
         lag_seconds = int(max(0, now_ts - last_successful)) if last_successful is not None else None
         return WixSyncControlRecord(
-            event_id=row["event_id"],
-            enabled=bool(row["enabled"]),
-            interval_seconds=int(row["interval_seconds"]),
+            event_id=row.event_id,
+            enabled=bool(row.enabled),
+            interval_seconds=int(row.interval_seconds),
             last_successful_sync_at=last_successful,
-            last_attempt_at=float(row["last_attempt_at"]) if row["last_attempt_at"] is not None else None,
+            last_attempt_at=float(row.last_attempt_at) if row.last_attempt_at is not None else None,
             current_lag_seconds=lag_seconds,
-            last_error=row["last_error"],
-            updated_at=float(row["updated_at"]),
+            last_error=row.last_error,
+            updated_at=float(row.updated_at),
         )
 
     def get_control(self, *, event_id: str, now_ts: float | None = None) -> WixSyncControlRecord:
         current = now_ts or time()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                """
-                SELECT *
-                FROM wix_sync_controls
-                WHERE event_id = ?
-                """,
-                (event_id,),
-            ).fetchone()
+        with self._Session() as session:
+            row = session.query(_WixSyncControl).filter_by(event_id=event_id).first()
 
         if row is None:
             return WixSyncControlRecord(
@@ -96,116 +101,88 @@ class WixSyncControlService:
     ) -> WixSyncControlRecord:
         safe_interval = max(30, min(300, int(interval_seconds)))
         now_ts = time()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO wix_sync_controls (
-                    event_id,
-                    enabled,
-                    interval_seconds,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(event_id) DO UPDATE SET
-                    enabled = excluded.enabled,
-                    interval_seconds = excluded.interval_seconds,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    event_id,
-                    1 if enabled else 0,
-                    safe_interval,
-                    now_ts,
-                    now_ts,
-                ),
-            )
-            conn.commit()
-
-        return self.get_control(event_id=event_id, now_ts=now_ts)
+        with self._Session() as session:
+            row = session.query(_WixSyncControl).filter_by(event_id=event_id).first()
+            if row is None:
+                row = _WixSyncControl(
+                    event_id=event_id,
+                    enabled=enabled,
+                    interval_seconds=safe_interval,
+                    created_at=now_ts,
+                    updated_at=now_ts,
+                )
+                session.add(row)
+            else:
+                row.enabled = enabled
+                row.interval_seconds = safe_interval
+                row.updated_at = now_ts
+            session.commit()
+            session.refresh(row)
+            record = self._to_record(row, now_ts)
+        return record
 
     def list_controls(self, *, limit: int = 100, now_ts: float | None = None) -> list[WixSyncControlRecord]:
         current = now_ts or time()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM wix_sync_controls
-                ORDER BY event_id ASC
-                LIMIT ?
-                """,
-                (max(1, min(limit, 200)),),
-            ).fetchall()
-
-        return [self._to_record(row, current) for row in rows]
+        with self._Session() as session:
+            rows = (
+                session.query(_WixSyncControl)
+                .order_by(_WixSyncControl.event_id.asc())
+                .limit(max(1, min(limit, 200)))
+                .all()
+            )
+        return [self._to_record(r, current) for r in rows]
 
     def process_due_syncs(self, *, now_ts: float | None = None, max_items: int = 25) -> int:
         current = now_ts or time()
         processed = 0
 
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            due_rows = conn.execute(
-                """
-                SELECT *
-                FROM wix_sync_controls
-                WHERE enabled = 1
-                  AND (
-                    last_attempt_at IS NULL
-                    OR (? - last_attempt_at) >= interval_seconds
-                  )
-                ORDER BY COALESCE(last_attempt_at, 0) ASC
-                LIMIT ?
-                """,
-                (current, max(1, min(max_items, 100))),
-            ).fetchall()
+        with self._Session() as session:
+            due_rows = (
+                session.query(_WixSyncControl)
+                .filter(
+                    _WixSyncControl.enabled.is_(True),
+                    (
+                        (_WixSyncControl.last_attempt_at.is_(None))
+                        | ((current - _WixSyncControl.last_attempt_at) >= _WixSyncControl.interval_seconds)
+                    ),
+                )
+                .order_by(_WixSyncControl.last_attempt_at.asc().nullsfirst())
+                .limit(max(1, min(max_items, 100)))
+                .all()
+            )
+            due_event_ids = [r.event_id for r in due_rows]
 
-        if not due_rows:
+        if not due_event_ids:
             return 0
 
         manifest_service = get_ticket_manifest_service()
-        for row in due_rows:
-            event_id = row["event_id"]
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute(
-                    """
-                    UPDATE wix_sync_controls
-                    SET last_attempt_at = ?,
-                        updated_at = ?
-                    WHERE event_id = ?
-                    """,
-                    (current, current, event_id),
-                )
-                conn.commit()
+        for event_id in due_event_ids:
+            with self._Session() as session:
+                row = session.query(_WixSyncControl).filter_by(event_id=event_id).first()
+                if row is None:
+                    continue
+                row.last_attempt_at = current
+                row.updated_at = current
+                session.commit()
 
             try:
                 manifest_service.sync_event_from_wix(event_id)
-            except Exception as exc:  # pragma: no cover - exercised via tests with deterministic failures
-                with sqlite3.connect(self._db_path) as conn:
-                    conn.execute(
-                        """
-                        UPDATE wix_sync_controls
-                        SET last_error = ?,
-                            updated_at = ?
-                        WHERE event_id = ?
-                        """,
-                        (str(exc)[:500], current, event_id),
-                    )
-                    conn.commit()
+            except Exception as exc:  # pragma: no cover
+                with self._Session() as session:
+                    row = session.query(_WixSyncControl).filter_by(event_id=event_id).first()
+                    if row is not None:
+                        row.last_error = str(exc)[:500]
+                        row.updated_at = current
+                        session.commit()
                 continue
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute(
-                    """
-                    UPDATE wix_sync_controls
-                    SET last_successful_sync_at = ?,
-                        last_error = NULL,
-                        updated_at = ?
-                    WHERE event_id = ?
-                    """,
-                    (current, current, event_id),
-                )
-                conn.commit()
+            with self._Session() as session:
+                row = session.query(_WixSyncControl).filter_by(event_id=event_id).first()
+                if row is not None:
+                    row.last_successful_sync_at = current
+                    row.last_error = None
+                    row.updated_at = current
+                    session.commit()
 
             processed += 1
 
@@ -224,5 +201,5 @@ def get_sync_control_service() -> WixSyncControlService:
     global _sync_control_service
     if _sync_control_service is None:
         settings = get_settings()
-        _sync_control_service = WixSyncControlService(db_path=settings.sync_controls_db_path, settings=settings)
+        _sync_control_service = WixSyncControlService(settings=settings)
     return _sync_control_service

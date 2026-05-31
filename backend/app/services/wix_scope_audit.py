@@ -8,8 +8,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+from sqlalchemy import Column, String, func, text
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core.config import Settings, get_settings
+from app.db import make_engine
 from app.services.credentials import get_credential_provider
 from app.services.site_event_binding import SiteEventBindingService, get_site_event_binding_service
 
@@ -36,43 +39,48 @@ class WixScopeAuditRecord:
     created_at: str
 
 
+Base = declarative_base()
+
+
+class _WixScopeAuditRow(Base):
+    __tablename__ = "wix_scope_audit"
+
+    audit_id = Column(String, primary_key=True)
+    binding_id = Column(String, nullable=False, index=True)
+    wix_site_id = Column(String, nullable=False)
+    wix_event_id = Column(String, nullable=False)
+    required_scopes = Column(String, nullable=False)   # JSON array
+    verified_scopes = Column(String, nullable=False)   # JSON array
+    missing_scopes = Column(String, nullable=False)    # JSON array
+    status = Column(String, nullable=False)
+    alert_reason = Column(String, nullable=True)
+    scopes_verified_at = Column(String, nullable=False)
+    verified_by_actor = Column(String, nullable=False)
+    created_at = Column(String, nullable=False, index=True)
+
+
 class WixScopeAuditService:
     def __init__(
         self,
         *,
         settings: Settings,
         binding_service: SiteEventBindingService,
-        db_path: str,
+        db_path: str | None = None,
+        db_url: str | None = None,
     ) -> None:
         self._settings = settings
         self._binding_service = binding_service
-        self._db_path = str(Path(db_path))
         self._credential_provider = get_credential_provider(settings)
-        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
-
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS wix_scope_audit (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    audit_id TEXT NOT NULL UNIQUE,
-                    binding_id TEXT NOT NULL,
-                    wix_site_id TEXT NOT NULL,
-                    wix_event_id TEXT NOT NULL,
-                    required_scopes TEXT NOT NULL,
-                    verified_scopes TEXT NOT NULL,
-                    missing_scopes TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    alert_reason TEXT,
-                    scopes_verified_at TEXT NOT NULL,
-                    verified_by_actor TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.commit()
+        if db_url:
+            url = db_url
+        elif db_path:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            url = f"sqlite:///{Path(db_path).resolve()}"
+        else:
+            url = settings.database_url
+        self._engine = make_engine(url)
+        Base.metadata.create_all(self._engine)
+        self._Session = sessionmaker(bind=self._engine, autoflush=False, autocommit=False)
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -81,16 +89,12 @@ class WixScopeAuditService:
         token = self._credential_provider.get_wix_api_token()
         if not token:
             raise RuntimeError("Wix API token not configured.")
-
         url = f"{self._settings.wix_base_url.rstrip('/')}/apps/v1/instance"
         headers = {"Authorization": f"Bearer {token}"}
-
         with httpx.Client(timeout=self._settings.wix_timeout_ms / 1000.0) as client:
             response = client.get(url, headers=headers)
-
         if response.status_code >= 400:
             raise RuntimeError(f"Wix app instance query failed with {response.status_code}")
-
         data = response.json() if response.content else {}
         instance = data.get("instance", {}) if isinstance(data, dict) else {}
         permissions = instance.get("permissions", []) if isinstance(instance, dict) else []
@@ -103,12 +107,8 @@ class WixScopeAuditService:
             if not wix_site_id.startswith("site-"):
                 return []
             if wix_site_id.endswith("-missing-scopes"):
-                return [
-                    "WIX_EVENTS.CHECK-IN",
-                    "WIX_EVENTS.READ_EVENTS",
-                ]
+                return ["WIX_EVENTS.CHECK-IN", "WIX_EVENTS.READ_EVENTS"]
             return list(REQUIRED_WIX_PERMISSIONS)
-
         return self._fetch_live_permissions()
 
     def _insert_audit(
@@ -126,42 +126,24 @@ class WixScopeAuditService:
     ) -> WixScopeAuditRecord:
         now = self._now()
         audit_id = f"scope-{uuid4()}"
-
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO wix_scope_audit (
-                    audit_id,
-                    binding_id,
-                    wix_site_id,
-                    wix_event_id,
-                    required_scopes,
-                    verified_scopes,
-                    missing_scopes,
-                    status,
-                    alert_reason,
-                    scopes_verified_at,
-                    verified_by_actor,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    audit_id,
-                    binding_id,
-                    wix_site_id,
-                    wix_event_id,
-                    json.dumps(required_scopes),
-                    json.dumps(verified_scopes),
-                    json.dumps(missing_scopes),
-                    status,
-                    alert_reason,
-                    now,
-                    actor,
-                    now,
-                ),
+        with self._Session() as session:
+            session.add(
+                _WixScopeAuditRow(
+                    audit_id=audit_id,
+                    binding_id=binding_id,
+                    wix_site_id=wix_site_id,
+                    wix_event_id=wix_event_id,
+                    required_scopes=json.dumps(required_scopes),
+                    verified_scopes=json.dumps(verified_scopes),
+                    missing_scopes=json.dumps(missing_scopes),
+                    status=status,
+                    alert_reason=alert_reason,
+                    scopes_verified_at=now,
+                    verified_by_actor=actor,
+                    created_at=now,
+                )
             )
-            conn.commit()
-
+            session.commit()
         return WixScopeAuditRecord(
             audit_id=audit_id,
             binding_id=binding_id,
@@ -206,54 +188,55 @@ class WixScopeAuditService:
             actor=actor,
         )
 
-    def _row_to_record(self, row: sqlite3.Row) -> WixScopeAuditRecord:
+    def _row_to_record(self, row: _WixScopeAuditRow) -> WixScopeAuditRecord:
         return WixScopeAuditRecord(
-            audit_id=row["audit_id"],
-            binding_id=row["binding_id"],
-            wix_site_id=row["wix_site_id"],
-            wix_event_id=row["wix_event_id"],
-            required_scopes=json.loads(row["required_scopes"]),
-            verified_scopes=json.loads(row["verified_scopes"]),
-            missing_scopes=json.loads(row["missing_scopes"]),
-            status=row["status"],
-            alert_reason=row["alert_reason"],
-            scopes_verified_at=row["scopes_verified_at"],
-            verified_by_actor=row["verified_by_actor"],
-            created_at=row["created_at"],
+            audit_id=row.audit_id,
+            binding_id=row.binding_id,
+            wix_site_id=row.wix_site_id,
+            wix_event_id=row.wix_event_id,
+            required_scopes=json.loads(row.required_scopes),
+            verified_scopes=json.loads(row.verified_scopes),
+            missing_scopes=json.loads(row.missing_scopes),
+            status=row.status,
+            alert_reason=row.alert_reason,
+            scopes_verified_at=row.scopes_verified_at,
+            verified_by_actor=row.verified_by_actor,
+            created_at=row.created_at,
         )
 
     def list_latest(self) -> list[WixScopeAuditRecord]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT a.*
-                FROM wix_scope_audit a
-                INNER JOIN (
-                    SELECT binding_id, MAX(created_at) AS max_created_at
-                    FROM wix_scope_audit
-                    GROUP BY binding_id
-                ) latest
-                ON a.binding_id = latest.binding_id AND a.created_at = latest.max_created_at
-                ORDER BY a.created_at DESC
-                """
-            ).fetchall()
-        return [self._row_to_record(row) for row in rows]
+        with self._Session() as session:
+            # Subquery: latest created_at per binding_id
+            subq = (
+                session.query(
+                    _WixScopeAuditRow.binding_id,
+                    func.max(_WixScopeAuditRow.created_at).label("max_created_at"),
+                )
+                .group_by(_WixScopeAuditRow.binding_id)
+                .subquery()
+            )
+            rows = (
+                session.query(_WixScopeAuditRow)
+                .join(
+                    subq,
+                    (_WixScopeAuditRow.binding_id == subq.c.binding_id)
+                    & (_WixScopeAuditRow.created_at == subq.c.max_created_at),
+                )
+                .order_by(_WixScopeAuditRow.created_at.desc())
+                .all()
+            )
+        return [self._row_to_record(r) for r in rows]
 
     def list_history_for_binding(self, binding_id: str, limit: int = 20) -> list[WixScopeAuditRecord]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM wix_scope_audit
-                WHERE binding_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (binding_id, max(1, min(limit, 100))),
-            ).fetchall()
-        return [self._row_to_record(row) for row in rows]
+        with self._Session() as session:
+            rows = (
+                session.query(_WixScopeAuditRow)
+                .filter_by(binding_id=binding_id)
+                .order_by(_WixScopeAuditRow.created_at.desc())
+                .limit(max(1, min(limit, 100)))
+                .all()
+            )
+        return [self._row_to_record(r) for r in rows]
 
 
 _scope_audit_service: WixScopeAuditService | None = None
@@ -271,6 +254,5 @@ def get_wix_scope_audit_service() -> WixScopeAuditService:
         _scope_audit_service = WixScopeAuditService(
             settings=settings,
             binding_service=get_site_event_binding_service(),
-            db_path=settings.site_event_binding_db_path,
         )
     return _scope_audit_service

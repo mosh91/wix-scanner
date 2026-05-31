@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     wix_retry_max_ms: int = 1500
     redis_url: str = "redis://redis:6379/0"
     redis_key_prefix: str = "wix-scanner"
+    # Central PostgreSQL URL used by all backend services.
+    # Set WIX_SCANNER_DATABASE_URL in production; defaults to the Docker dev Postgres.
+    database_url: str = "postgresql://wix_scanner:wix_scanner_dev@postgres:5432/wix_scanner"
     pending_marker_ttl_s: int = 86400
     manifest_cache_ttl_s: int = 86400
     offline_queue_max_attempts: int = 5

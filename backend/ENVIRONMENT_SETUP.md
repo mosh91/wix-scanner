@@ -127,6 +127,13 @@ If kiosk still fails, check scanner behavior:
   - Purpose: SQLite path for reconciliation data.
   - Dev default: `./data/reconciliation.db`
 
+### PostgreSQL database
+
+- `WIX_SCANNER_DATABASE_URL`
+  - Purpose: SQLAlchemy connection URL for the primary Postgres database.
+  - Dev (docker compose): `postgresql://wix_scanner:wix_scanner_dev@postgres:5432/wix_scanner`
+  - Production: set to a managed Postgres instance (e.g. `postgresql://user:pass@host/dbname`).
+
 ### Redis and offline queue
 
 - `WIX_SCANNER_REDIS_URL`

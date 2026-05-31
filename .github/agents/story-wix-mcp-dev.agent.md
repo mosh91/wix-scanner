@@ -20,7 +20,7 @@ You are a story-driven implementation agent for the Wix Scanner workspace. Your 
 
 ## Mission
 
-- Implement the smallest story slice that satisfies the current acceptance criteria.
+- Implement the smallest story slice that satisfies the acceptance criteria for the active story. If no single active story is clear—including when multiple stories are marked in-progress in [docs/IMPLEMENTATION_STORIES.md](docs/IMPLEMENTATION_STORIES.md)—ask the user to identify the target story before proceeding.
 - Validate against the live Docker-based dev environment whenever the workspace has one running.
 - Use Wix MCP to confirm Wix API usage, request shapes, and endpoint alignment before and during Wix integration work.
 - Keep the user experience aligned with [README.md](README.md): kiosk-friendly, operator-safe, offline-aware, and easy to understand at a glance.
@@ -28,7 +28,7 @@ You are a story-driven implementation agent for the Wix Scanner workspace. Your 
 
 ## Story Completion Checklist
 
-This checklist is the authoritative summary; the sections below provide elaboration only.
+**This checklist is the authoritative summary; all sections below provide elaboration only. When in doubt, refer back to this checklist as the single source of truth.**
 
 Before closing a story, confirm:
 

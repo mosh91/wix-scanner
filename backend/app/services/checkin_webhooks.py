@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
 
+from sqlalchemy import Boolean, Column, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 from app.core.config import get_settings
+from app.db import make_engine
 from app.services.ticket_manifest import get_ticket_manifest_service
 
 
@@ -29,62 +32,70 @@ class WebhookProcessResult:
     message: str
 
 
-class CheckinWebhookService:
-    def __init__(self, db_file: Path | None = None) -> None:
-        self._db_file = db_file or Path("./data/checkin_webhooks.db")
-        self._db_file.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize_db()
+Base = declarative_base()
 
-    def _initialize_db(self) -> None:
-        with sqlite3.connect(self._db_file) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS webhook_deliveries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    wix_request_id TEXT,
-                    wix_event_id TEXT NOT NULL,
-                    ticket_number TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    checked_in_at TEXT NOT NULL,
-                    payload TEXT NOT NULL,
-                    signature_valid INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    error_message TEXT,
-                    received_at REAL NOT NULL,
-                    retried_from_id INTEGER
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS scan_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL,
-                    ticket_number TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    result TEXT NOT NULL,
-                    wix_request_id TEXT,
-                    created_at REAL NOT NULL,
-                    UNIQUE(event_id, ticket_number, source, result)
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS checkin_records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL,
-                    ticket_number TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    wix_ticket_id TEXT,
-                    wix_request_id TEXT,
-                    checked_in_at TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    UNIQUE(event_id, ticket_number)
-                )
-                """
-            )
-            connection.commit()
+
+class _WebhookDeliveryRow(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wix_request_id = Column(String, nullable=True)
+    wix_event_id = Column(String, nullable=False)
+    ticket_number = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    checked_in_at = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)
+    signature_valid = Column(Integer, nullable=False)
+    status = Column(String, nullable=False)
+    error_message = Column(String, nullable=True)
+    received_at = Column(Float, nullable=False)
+    retried_from_id = Column(Integer, nullable=True)
+
+
+class _ScanEventRow(Base):
+    __tablename__ = "scan_events"
+    __table_args__ = (UniqueConstraint("event_id", "ticket_number", "source", "result"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, nullable=False)
+    ticket_number = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    result = Column(String, nullable=False)
+    wix_request_id = Column(String, nullable=True)
+    created_at = Column(Float, nullable=False)
+
+
+class _CheckinRecordRow(Base):
+    __tablename__ = "checkin_records"
+    __table_args__ = (UniqueConstraint("event_id", "ticket_number"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, nullable=False)
+    ticket_number = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    wix_ticket_id = Column(String, nullable=True)
+    wix_request_id = Column(String, nullable=True)
+    checked_in_at = Column(String, nullable=False)
+    created_at = Column(Float, nullable=False)
+
+
+class CheckinWebhookService:
+    def __init__(
+        self,
+        db_file: Path | None = None,
+        db_url: str | None = None,
+    ) -> None:
+        if db_url:
+            url = db_url
+        elif db_file is not None:
+            db_file.parent.mkdir(parents=True, exist_ok=True)
+            url = f"sqlite:///{db_file.resolve()}"
+        else:
+            settings = get_settings()
+            url = settings.database_url
+        self._engine = make_engine(url)
+        Base.metadata.create_all(self._engine)
+        self._Session = sessionmaker(bind=self._engine, autoflush=False, autocommit=False)
 
     def verify_signature(self, *, raw_body: bytes, header_signature: str | None) -> bool:
         settings = get_settings()
@@ -107,85 +118,73 @@ class CheckinWebhookService:
         error_message: str | None,
         retried_from_id: int | None,
     ) -> int:
-        with sqlite3.connect(self._db_file) as connection:
-            cursor = connection.execute(
-                """
-                INSERT INTO webhook_deliveries (
-                    wix_request_id,
-                    wix_event_id,
-                    ticket_number,
-                    source,
-                    checked_in_at,
-                    payload,
-                    signature_valid,
-                    status,
-                    error_message,
-                    received_at,
-                    retried_from_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    payload.wix_request_id,
-                    payload.wix_event_id,
-                    payload.ticket_number,
-                    payload.source,
-                    payload.checked_in_at,
-                    json.dumps(raw_payload, separators=(",", ":")),
-                    1 if signature_valid else 0,
-                    status,
-                    error_message,
-                    time(),
-                    retried_from_id,
-                ),
+        with self._Session() as session:
+            row = _WebhookDeliveryRow(
+                wix_request_id=payload.wix_request_id,
+                wix_event_id=payload.wix_event_id,
+                ticket_number=payload.ticket_number,
+                source=payload.source,
+                checked_in_at=payload.checked_in_at,
+                payload=json.dumps(raw_payload, separators=(",", ":")),
+                signature_valid=1 if signature_valid else 0,
+                status=status,
+                error_message=error_message,
+                received_at=time(),
+                retried_from_id=retried_from_id,
             )
-            connection.commit()
-            return int(cursor.lastrowid)
+            session.add(row)
+            session.flush()
+            delivery_id = int(row.id)
+            session.commit()
+        return delivery_id
 
     def _insert_scan_and_checkin(self, payload: WebhookPayload) -> tuple[bool, str]:
         now = time()
         event_id = payload.wix_event_id
         ticket = payload.ticket_number.strip().upper()
 
-        with sqlite3.connect(self._db_file) as connection:
-            try:
-                connection.execute(
-                    """
-                    INSERT INTO scan_events (event_id, ticket_number, source, result, wix_request_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (event_id, ticket, payload.source, "checked_in", payload.wix_request_id, now),
+        with self._Session() as session:
+            # Try insert scan event (ignore duplicate)
+            existing_scan = (
+                session.query(_ScanEventRow)
+                .filter_by(event_id=event_id, ticket_number=ticket, source=payload.source, result="checked_in")
+                .first()
+            )
+            if existing_scan is None:
+                session.add(
+                    _ScanEventRow(
+                        event_id=event_id,
+                        ticket_number=ticket,
+                        source=payload.source,
+                        result="checked_in",
+                        wix_request_id=payload.wix_request_id,
+                        created_at=now,
+                    )
                 )
-            except sqlite3.IntegrityError:
-                pass
 
-            try:
-                connection.execute(
-                    """
-                    INSERT INTO checkin_records (
-                        event_id,
-                        ticket_number,
-                        source,
-                        wix_ticket_id,
-                        wix_request_id,
-                        checked_in_at,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        event_id,
-                        ticket,
-                        payload.source,
-                        payload.wix_ticket_id,
-                        payload.wix_request_id,
-                        payload.checked_in_at,
-                        now,
-                    ),
-                )
-                connection.commit()
-                return True, "recorded"
-            except sqlite3.IntegrityError:
-                connection.commit()
+            # Try insert checkin record (unique on event_id + ticket_number)
+            existing_checkin = (
+                session.query(_CheckinRecordRow)
+                .filter_by(event_id=event_id, ticket_number=ticket)
+                .first()
+            )
+            if existing_checkin is not None:
+                session.commit()
                 return False, "duplicate"
+
+            session.add(
+                _CheckinRecordRow(
+                    event_id=event_id,
+                    ticket_number=ticket,
+                    source=payload.source,
+                    wix_ticket_id=payload.wix_ticket_id,
+                    wix_request_id=payload.wix_request_id,
+                    checked_in_at=payload.checked_in_at,
+                    created_at=now,
+                )
+            )
+            session.commit()
+        return True, "recorded"
 
     def process_payload(
         self,
@@ -238,46 +237,38 @@ class CheckinWebhookService:
         )
 
     def list_deliveries(self, *, limit: int = 50) -> list[dict[str, object]]:
-        with sqlite3.connect(self._db_file) as connection:
-            rows = connection.execute(
-                """
-                SELECT id, wix_request_id, wix_event_id, ticket_number, source, checked_in_at,
-                       signature_valid, status, error_message, received_at, retried_from_id
-                FROM webhook_deliveries
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (max(1, min(limit, 500)),),
-            ).fetchall()
-
+        with self._Session() as session:
+            rows = (
+                session.query(_WebhookDeliveryRow)
+                .order_by(_WebhookDeliveryRow.id.desc())
+                .limit(max(1, min(limit, 500)))
+                .all()
+            )
         return [
             {
-                "id": int(row[0]),
-                "wix_request_id": row[1],
-                "wix_event_id": row[2],
-                "ticket_number": row[3],
-                "source": row[4],
-                "checked_in_at": row[5],
-                "signature_valid": bool(row[6]),
-                "status": row[7],
-                "error_message": row[8],
-                "received_at": float(row[9]),
-                "retried_from_id": int(row[10]) if row[10] is not None else None,
+                "id": int(r.id),
+                "wix_request_id": r.wix_request_id,
+                "wix_event_id": r.wix_event_id,
+                "ticket_number": r.ticket_number,
+                "source": r.source,
+                "checked_in_at": r.checked_in_at,
+                "signature_valid": bool(r.signature_valid),
+                "status": r.status,
+                "error_message": r.error_message,
+                "received_at": float(r.received_at),
+                "retried_from_id": int(r.retried_from_id) if r.retried_from_id is not None else None,
             }
-            for row in rows
+            for r in rows
         ]
 
     def retry_delivery(self, *, delivery_id: int) -> WebhookProcessResult:
-        with sqlite3.connect(self._db_file) as connection:
-            row = connection.execute(
-                "SELECT payload FROM webhook_deliveries WHERE id = ?",
-                (delivery_id,),
-            ).fetchone()
+        with self._Session() as session:
+            row = session.query(_WebhookDeliveryRow).filter_by(id=delivery_id).first()
 
         if row is None:
             raise KeyError("delivery_not_found")
 
-        raw_payload = json.loads(row[0])
+        raw_payload = json.loads(row.payload)
         payload = WebhookPayload(
             ticket_number=str(raw_payload["ticket_number"]),
             wix_ticket_id=str(raw_payload["wix_ticket_id"]),
@@ -294,11 +285,11 @@ class CheckinWebhookService:
         )
 
     def reset_for_tests(self) -> None:
-        with sqlite3.connect(self._db_file) as connection:
-            connection.execute("DELETE FROM webhook_deliveries")
-            connection.execute("DELETE FROM scan_events")
-            connection.execute("DELETE FROM checkin_records")
-            connection.commit()
+        with self._Session() as session:
+            session.query(_WebhookDeliveryRow).delete()
+            session.query(_ScanEventRow).delete()
+            session.query(_CheckinRecordRow).delete()
+            session.commit()
 
 
 _webhook_service: CheckinWebhookService | None = None

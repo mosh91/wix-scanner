@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
+
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from app.core.config import get_settings
+from app.db import make_engine
+
+Base = declarative_base()
 
 _reset_audit_service: ResetAuditService | None = None
 
@@ -33,31 +40,32 @@ class ResetAuditRecord:
     performed_at: str   # ISO-8601 UTC
 
 
+class _ResetAuditRow(Base):
+    __tablename__ = "reset_audit"
+
+    reset_id = Column(String, primary_key=True)
+    scope = Column(String, nullable=False)
+    scope_id = Column(String, nullable=False, index=True)
+    actor = Column(String, nullable=False)
+    reason = Column(String, nullable=False)
+    records_cleared = Column(Integer, nullable=False, default=0)
+    performed_at = Column(String, nullable=False)
+
+
 class ResetAuditService:
-    """SQLite-backed audit trail for reset actions."""
+    """SQLAlchemy-backed audit trail for reset actions (Postgres in production, SQLite in tests)."""
 
-    def __init__(self, db_path: str) -> None:
-        self._db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
-
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS reset_audit (
-                    reset_id     TEXT PRIMARY KEY,
-                    scope        TEXT NOT NULL,
-                    scope_id     TEXT NOT NULL,
-                    actor        TEXT NOT NULL,
-                    reason       TEXT NOT NULL,
-                    records_cleared INTEGER NOT NULL DEFAULT 0,
-                    performed_at TEXT NOT NULL
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_reset_audit_scope_id ON reset_audit(scope_id)"
-            )
-            conn.commit()
+    def __init__(self, db_path: str | None = None, db_url: str | None = None) -> None:
+        if db_url:
+            url = db_url
+        elif db_path:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            url = f"sqlite:///{Path(db_path).resolve()}"
+        else:
+            url = get_settings().database_url
+        self._engine = make_engine(url)
+        Base.metadata.create_all(self._engine)
+        self._Session = sessionmaker(bind=self._engine, autoflush=False, autocommit=False)
 
     def record_reset(
         self,
@@ -69,14 +77,19 @@ class ResetAuditService:
     ) -> ResetAuditRecord:
         reset_id = str(uuid4())
         performed_at = datetime.now(UTC).isoformat()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """INSERT INTO reset_audit
-                   (reset_id, scope, scope_id, actor, reason, records_cleared, performed_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (reset_id, scope, scope_id, actor, reason, records_cleared, performed_at),
+        with self._Session() as session:
+            session.add(
+                _ResetAuditRow(
+                    reset_id=reset_id,
+                    scope=scope,
+                    scope_id=scope_id,
+                    actor=actor,
+                    reason=reason,
+                    records_cleared=records_cleared,
+                    performed_at=performed_at,
+                )
             )
-            conn.commit()
+            session.commit()
         return ResetAuditRecord(
             reset_id=reset_id,
             scope=scope,
@@ -88,21 +101,44 @@ class ResetAuditService:
         )
 
     def list_audit(self, limit: int = 100) -> list[ResetAuditRecord]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM reset_audit ORDER BY performed_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        with self._Session() as session:
+            rows = (
+                session.query(_ResetAuditRow)
+                .order_by(_ResetAuditRow.performed_at.desc())
+                .limit(limit)
+                .all()
+            )
         return [
             ResetAuditRecord(
-                reset_id=row["reset_id"],
-                scope=row["scope"],
-                scope_id=row["scope_id"],
-                actor=row["actor"],
-                reason=row["reason"],
-                records_cleared=row["records_cleared"],
-                performed_at=row["performed_at"],
+                reset_id=r.reset_id,
+                scope=r.scope,
+                scope_id=r.scope_id,
+                actor=r.actor,
+                reason=r.reason,
+                records_cleared=r.records_cleared,
+                performed_at=r.performed_at,
             )
-            for row in rows
+            for r in rows
+        ]
+
+    def list_audit_for_scope(self, scope_id: str, limit: int = 50) -> list[ResetAuditRecord]:
+        with self._Session() as session:
+            rows = (
+                session.query(_ResetAuditRow)
+                .filter(_ResetAuditRow.scope_id == scope_id)
+                .order_by(_ResetAuditRow.performed_at.desc())
+                .limit(limit)
+                .all()
+            )
+        return [
+            ResetAuditRecord(
+                reset_id=r.reset_id,
+                scope=r.scope,
+                scope_id=r.scope_id,
+                actor=r.actor,
+                reason=r.reason,
+                records_cleared=r.records_cleared,
+                performed_at=r.performed_at,
+            )
+            for r in rows
         ]

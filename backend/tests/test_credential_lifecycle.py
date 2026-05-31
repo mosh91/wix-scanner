@@ -117,8 +117,8 @@ def test_validate_credential_transitions_to_validated_on_success(lifecycle_servi
 def test_validate_credential_with_fail_prefix_transitions_to_failed(lifecycle_service: CredentialLifecycleService) -> None:
     """Mock mode: credential IDs starting with 'cred-fail-' always fail validation."""
     # We need to insert a record with a specific ID prefix to test mock fail behavior.
-    # First create normally, then we modify the credential_id in the DB.
-    import sqlite3
+    # First create normally, then we modify the credential_id in the DB via SQLAlchemy.
+    from app.services.credential_lifecycle import _CredentialLifecycleRow, _CredentialLifecycleEventRow
 
     record = lifecycle_service.create_credential(
         profile_name="fail-profile",
@@ -127,16 +127,14 @@ def test_validate_credential_with_fail_prefix_transitions_to_failed(lifecycle_se
     )
     # Override the credential_id to trigger mock failure
     fail_id = f"cred-fail-{record.credential_id}"
-    with sqlite3.connect(lifecycle_service._db_path) as conn:
-        conn.execute(
-            "UPDATE credential_lifecycle SET credential_id = ? WHERE credential_id = ?",
-            (fail_id, record.credential_id),
+    with lifecycle_service._Session() as session:
+        session.query(_CredentialLifecycleRow).filter_by(credential_id=record.credential_id).update(
+            {"credential_id": fail_id}
         )
-        conn.execute(
-            "UPDATE credential_lifecycle_events SET credential_id = ? WHERE credential_id = ?",
-            (fail_id, record.credential_id),
+        session.query(_CredentialLifecycleEventRow).filter_by(credential_id=record.credential_id).update(
+            {"credential_id": fail_id}
         )
-        conn.commit()
+        session.commit()
 
     failed = lifecycle_service.validate_credential(fail_id, actor="test-actor")
     assert failed.lifecycle_state == "failed"
