@@ -478,6 +478,45 @@ class CredentialLifecycleService:
                 "All active credentials must use the same auth mode in production."
             )
 
+    def mark_token_refreshed(
+        self,
+        credential_id: str,
+        *,
+        actor: str,
+        expires_at: str,
+        refreshed_at: str,
+    ) -> CredentialLifecycleRecord:
+        record = self.get_credential(credential_id)
+        if record is None:
+            raise KeyError(credential_id)
+
+        with sqlite3.connect(self._db_path) as conn:
+            conn.execute(
+                """
+                UPDATE credential_lifecycle
+                SET lifecycle_state = 'active',
+                    expires_at = ?,
+                    last_validated_at = ?,
+                    validation_error = NULL,
+                    rotation_note = ?
+                WHERE credential_id = ?
+                """,
+                (expires_at, refreshed_at, f"Manual token refresh by {actor}", credential_id),
+            )
+            self._emit_event(
+                conn,
+                credential_id,
+                record.lifecycle_state,
+                "active",
+                actor,
+                "Manual token refresh",
+            )
+            conn.commit()
+
+        updated = self.get_credential(credential_id)
+        assert updated is not None
+        return updated
+
     def get_credential(self, credential_id: str) -> CredentialLifecycleRecord | None:
         with sqlite3.connect(self._db_path) as conn:
             row = conn.execute(

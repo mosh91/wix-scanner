@@ -901,7 +901,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-05: Authentication Settings screen (token mode)
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want to view and control token-based authentication so Wix integration remains healthy.

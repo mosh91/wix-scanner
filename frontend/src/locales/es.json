@@ -28,6 +28,7 @@
       "integrations": "Integraciones",
       "deliveries": "Entregas de Webhooks",
       "credentials": "Credenciales",
+      "auth-settings": "Config. Auth",
       "readiness": "Preparacion",
       "sync-controls": "Sync Wix",
       "reconciliation": "Reconciliacion",
@@ -179,6 +180,26 @@
         "close": "Cancelar",
         "confirm": "Rotar ahora"
       }
+    },
+    "authSettings": {
+      "title": "Configuracion de autenticacion",
+      "description": "Revise la salud del modo token, ejecute refresh manual del token y pruebe conectividad con Wix sin exponer valores del token.",
+      "authMode": "Modo de autenticacion",
+      "tokenStatus": "Estado del token",
+      "expiresAt": "Expira en",
+      "lastRefresh": "Ultimo refresh",
+      "lastTest": "Ultima prueba de conexion",
+      "lastError": "Ultimo error",
+      "refreshToken": "Refrescar token",
+      "testConnection": "Probar conexion",
+      "refreshSuccess": "Refresh de token completado",
+      "refreshError": "Falló el refresh del token",
+      "testSuccess": "Prueba de conexion completada",
+      "testError": "Falló la prueba de conexion",
+      "loadError": "No se pudo cargar la configuracion de auth",
+      "notAvailable": "N/D",
+      "none": "Ninguno",
+      "empty": "Aun no hay estado de auth disponible."
     },
     "readiness": {
       "title": "Readiness del evento",

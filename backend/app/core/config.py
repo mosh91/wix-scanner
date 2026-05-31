@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     auth_mode: Literal["oauth", "api_key"] = "api_key"
     credential_expiry_warning_hours: int = 24
     credential_lifecycle_db_path: str = "./data/credential_lifecycle.db"
+    auth_settings_db_path: str = "./data/auth_settings.db"
     reconciliation_db_path: str = "./data/reconciliation.db"
     event_block_config_db_path: str = "./data/event_block_config.db"
     wix_timeout_ms: int = 2500

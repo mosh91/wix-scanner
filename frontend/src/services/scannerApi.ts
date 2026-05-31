@@ -538,6 +538,17 @@ export type RotateCredentialResponse = {
   revoked_credential: CredentialLifecycleRecord;
 };
 
+export type AuthTokenStatusResponse = {
+  auth_mode: string;
+  token_status: "healthy" | "expiring_soon" | "expired" | "invalid" | "missing" | "unknown";
+  credential_id: string | null;
+  profile_name: string | null;
+  expires_at: string | null;
+  last_refresh_at: string | null;
+  last_tested_at: string | null;
+  last_error: string | null;
+};
+
 export async function createCredential(
   profileName: string,
   authMode: AuthMode,
@@ -667,6 +678,40 @@ export async function validateAuthModeConsistency(): Promise<{ ok: boolean; erro
     throw new Error(`Validate auth mode consistency failed with status ${response.status}`);
   }
   return { ok: true };
+}
+
+export async function getAuthTokenStatus(): Promise<AuthTokenStatusResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/token`);
+  if (!response.ok) {
+    throw new Error(`Get auth token status failed with status ${response.status}`);
+  }
+  return (await response.json()) as AuthTokenStatusResponse;
+}
+
+export async function refreshAuthToken(actor = "operator-ui"): Promise<AuthTokenStatusResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/token/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Refresh token failed (${response.status})`);
+  }
+  return (await response.json()) as AuthTokenStatusResponse;
+}
+
+export async function testAuthConnection(actor = "operator-ui"): Promise<AuthTokenStatusResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/token/test-connection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Test connection failed (${response.status})`);
+  }
+  return (await response.json()) as AuthTokenStatusResponse;
 }
 
 // ── Event Block Config ────────────────────────────────────────────────────────

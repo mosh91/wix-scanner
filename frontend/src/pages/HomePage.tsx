@@ -16,6 +16,7 @@ import {
   deleteEvent,
   deleteBlock,
   fetchWebhookHistory,
+  getAuthTokenStatus,
   getEventReadiness,
   listBlocks,
   listEvents,
@@ -30,7 +31,9 @@ import {
   runEventReconciliation,
   syncManifest,
   retryWebhookDelivery,
+  refreshAuthToken,
   rotateCredential,
+  testAuthConnection,
   upsertSyncControl,
   validateAuthModeConsistency,
   validateCredential,
@@ -39,6 +42,7 @@ import {
   resetEvent,
   listResetAudit,
   type AuthMode,
+  type AuthTokenStatusResponse,
   type CredentialLifecycleRecord,
   type EventRecord,
   type EventBlockRecord,
@@ -52,7 +56,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -78,6 +82,8 @@ export default function HomePage() {
   const [isCredentialsHelpOpen, setIsCredentialsHelpOpen] = useState(false);
   const [rotateNewProfile, setRotateNewProfile] = useState("");
   const [rotateNewAuthMode, setRotateNewAuthMode] = useState<AuthMode>("api_key");
+  const [authTokenStatus, setAuthTokenStatus] = useState<AuthTokenStatusResponse | null>(null);
+  const [loadingAuthSettings, setLoadingAuthSettings] = useState(false);
   const [readinessEventId, setReadinessEventId] = useState("event-demo-01");
   const [readinessAcknowledged, setReadinessAcknowledged] = useState(false);
   const [readinessReport, setReadinessReport] = useState<
@@ -449,6 +455,44 @@ export default function HomePage() {
     }
   };
 
+  const loadAuthSettings = useCallback(async () => {
+    setLoadingAuthSettings(true);
+    try {
+      const status = await getAuthTokenStatus();
+      setAuthTokenStatus(status);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.authSettings.loadError"));
+    } finally {
+      setLoadingAuthSettings(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab === "auth-settings") {
+      void loadAuthSettings();
+    }
+  }, [activeTab, loadAuthSettings]);
+
+  const handleRefreshAuthToken = async () => {
+    try {
+      const status = await refreshAuthToken("operator-ui");
+      setAuthTokenStatus(status);
+      toast.success(t("home.authSettings.refreshSuccess"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.authSettings.refreshError"));
+    }
+  };
+
+  const handleTestAuthConnection = async () => {
+    try {
+      const status = await testAuthConnection("operator-ui");
+      setAuthTokenStatus(status);
+      toast.success(t("home.authSettings.testSuccess"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.authSettings.testError"));
+    }
+  };
+
   const loadReadiness = useCallback(async (eventId: string) => {
     setLoadingReadiness(true);
     try {
@@ -600,7 +644,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -886,6 +930,59 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "auth-settings" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>{t("home.authSettings.title")}</CardTitle>
+            <CardDescription>{t("home.authSettings.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void loadAuthSettings()} disabled={loadingAuthSettings}>
+                {loadingAuthSettings ? t("home.common.refreshing") : t("home.common.refresh")}
+              </Button>
+              <Button variant="outline" onClick={() => void handleTestAuthConnection()}>
+                {t("home.authSettings.testConnection")}
+              </Button>
+              <Button onClick={() => void handleRefreshAuthToken()}>
+                {t("home.authSettings.refreshToken")}
+              </Button>
+            </div>
+
+            {authTokenStatus ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.authMode")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.auth_mode}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.tokenStatus")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.token_status}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.expiresAt")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.expires_at ?? t("home.authSettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.lastRefresh")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.last_refresh_at ?? t("home.authSettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.lastTest")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.last_tested_at ?? t("home.authSettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authSettings.lastError")}</div>
+                  <div className="mt-1 font-medium">{authTokenStatus.last_error ?? t("home.authSettings.none")}</div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("home.authSettings.empty")}</p>
             )}
           </CardContent>
         </Card>

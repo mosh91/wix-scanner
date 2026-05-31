@@ -28,6 +28,7 @@
       "integrations": "Integrations",
       "deliveries": "Webhook Deliveries",
       "credentials": "Credentials",
+      "auth-settings": "Auth Settings",
       "readiness": "Readiness",
       "sync-controls": "Wix Sync",
       "reconciliation": "Reconciliation",
@@ -179,6 +180,26 @@
         "close": "Cancel",
         "confirm": "Rotate Now"
       }
+    },
+    "authSettings": {
+      "title": "Authentication Settings",
+      "description": "Inspect token-mode health, run manual token refresh, and test Wix connectivity without exposing token values.",
+      "authMode": "Auth mode",
+      "tokenStatus": "Token status",
+      "expiresAt": "Expires at",
+      "lastRefresh": "Last refresh",
+      "lastTest": "Last connection test",
+      "lastError": "Last error",
+      "refreshToken": "Refresh token",
+      "testConnection": "Test connection",
+      "refreshSuccess": "Token refresh completed",
+      "refreshError": "Token refresh failed",
+      "testSuccess": "Connection test completed",
+      "testError": "Connection test failed",
+      "loadError": "Could not load auth settings",
+      "notAvailable": "N/A",
+      "none": "None",
+      "empty": "No auth status available yet."
     },
     "readiness": {
       "title": "Event Readiness",
