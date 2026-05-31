@@ -939,21 +939,29 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-07: Encrypted credential persistence in database
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a security owner, I want credentials encrypted at rest in DB so plaintext secrets are never persisted.
 
 Tasks:
-- Add credential tables for encrypted payload and metadata.
-- Implement envelope encryption service with key versioning.
-- Add rotate/re-encrypt operation for key changes.
-- Add strict service-layer access control.
+- [x] Add credential tables for encrypted payload and metadata (with `key_version` column).
+- [x] Implement envelope encryption service with key versioning (AES-128-CBC + HMAC-SHA256 via Fernet; key derived from `{version}:{passphrase}` via SHA-256).
+- [x] Add rotate/re-encrypt operation for key changes (`rotate_key(new_key, new_version)` re-encrypts all rows and updates instance state).
+- [x] Add strict service-layer access control (factory sentinel pattern; direct instantiation yields unauthorised provider that raises `PermissionError` on reads).
 
 Acceptance criteria:
-- Given a credential save request, when persisted, then DB stores encrypted blob and metadata only.
-- Given unauthorized service path, when secret read is attempted, then access is denied.
-- Given key rotation event, when re-encryption runs, then credentials remain readable by authorized services.
+- [x] Given a credential save request, when persisted, then DB stores encrypted blob and metadata only (no plaintext; `key_version` metadata stored alongside).
+- [x] Given unauthorized service path, when secret read is attempted, then access is denied (`PermissionError` raised for providers not created via factory).
+- [x] Given key rotation event, when re-encryption runs, then credentials remain readable by authorized services.
+
+Implementation notes:
+- `cryptography>=42.0,<44.0` added to `backend/pyproject.toml`.
+- `credential_key_version: str = "v1"` added to `Settings` in `backend/app/core/config.py`.
+- `backend/app/services/credentials.py` rewritten: Fernet encryption, `key_version` column, factory sentinel for access control, `rotate_key()`.
+- Schema migration: `ALTER TABLE ... ADD COLUMN key_version` applied automatically on startup if column is missing.
+- Tests: `backend/tests/test_encrypted_credential_persistence.py` — 8 tests covering all ACs.
+- Full backend suite: 154/154 passed.
 
 ---
 

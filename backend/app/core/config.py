@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     wix_api_token: str = ""
     credential_provider_mode: Literal["env", "db"] = "env"
     credential_db_path: str = "./data/credentials.db"
+    credential_key_version: str = "v1"
     site_event_binding_db_path: str = "./data/site_event_bindings.db"
     credential_encryption_key: str = "dev-credential-key-must-change"
     auth_mode: Literal["oauth", "api_key"] = "api_key"
