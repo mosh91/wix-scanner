@@ -549,6 +549,24 @@ export type AuthTokenStatusResponse = {
   last_error: string | null;
 };
 
+export type ApiKeySettingsResponse = {
+  auth_mode: string;
+  api_key_configured: boolean;
+  wix_account_id: string | null;
+  last_rotated_at: string | null;
+  last_validated_at: string | null;
+  last_validation_error: string | null;
+  updated_at: string | null;
+  updated_by_actor: string | null;
+};
+
+export type ApiKeyValidationResponse = {
+  ok: boolean;
+  message: string;
+  tested_at: string;
+  wix_account_id: string | null;
+};
+
 export async function createCredential(
   profileName: string,
   authMode: AuthMode,
@@ -712,6 +730,48 @@ export async function testAuthConnection(actor = "operator-ui"): Promise<AuthTok
     throw new Error((err as { detail?: string }).detail ?? `Test connection failed (${response.status})`);
   }
   return (await response.json()) as AuthTokenStatusResponse;
+}
+
+export async function getApiKeySettings(): Promise<ApiKeySettingsResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/api-key`);
+  if (!response.ok) {
+    throw new Error(`Get API key settings failed with status ${response.status}`);
+  }
+  return (await response.json()) as ApiKeySettingsResponse;
+}
+
+export async function testApiKeyConnection(
+  apiKey: string,
+  wixAccountId: string | null,
+  actor = "operator-ui",
+): Promise<ApiKeyValidationResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/api-key/test-connection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey, wix_account_id: wixAccountId, actor }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `API key test failed (${response.status})`);
+  }
+  return (await response.json()) as ApiKeyValidationResponse;
+}
+
+export async function saveApiKeySettings(
+  apiKey: string,
+  wixAccountId: string,
+  actor = "operator-ui",
+): Promise<ApiKeySettingsResponse> {
+  const response = await fetch(`${API_BASE}/admin/auth-settings/api-key`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey, wix_account_id: wixAccountId, actor }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Save API key settings failed (${response.status})`);
+  }
+  return (await response.json()) as ApiKeySettingsResponse;
 }
 
 // ── Event Block Config ────────────────────────────────────────────────────────

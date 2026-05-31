@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from app.core.config import get_settings
-from app.services.auth_settings import AuthSettingsService, set_auth_settings_service
+from app.services.auth_settings import ApiKeyValidationRecord, AuthSettingsService, set_auth_settings_service
 from app.services.credential_lifecycle import CredentialLifecycleService
 
 
@@ -26,6 +27,8 @@ def auth_settings_client(backend_client, temp_db_dir, monkeypatch):
     yield {
         "client": backend_client,
         "credential_service": credential_service,
+        "auth_settings_db": auth_settings_db,
+        "auth_service": auth_service,
     }
 
     set_auth_settings_service(None)
@@ -83,3 +86,63 @@ def test_connection_failure_returns_actionable_error(auth_settings_client):
     response = client.post("/api/admin/auth-settings/token/test-connection", json={"actor": "operator-ui"})
     assert response.status_code == 422
     assert "No active OAuth credential" in response.json()["detail"]
+
+
+def test_api_key_save_persists_encrypted_settings_and_audit(auth_settings_client):
+    client = auth_settings_client["client"]
+    auth_settings_db = auth_settings_client["auth_settings_db"]
+
+    response = client.put(
+        "/api/admin/auth-settings/api-key",
+        json={
+            "api_key": "wix-api-key-123456",
+            "wix_account_id": "acct-123",
+            "actor": "operator-ui",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_key_configured"] is True
+    assert body["wix_account_id"] == "acct-123"
+    assert body["last_rotated_at"] is not None
+    assert body["last_validated_at"] is not None
+
+    with sqlite3.connect(auth_settings_db) as connection:
+        row = connection.execute(
+            "SELECT encrypted_api_key, encrypted_wix_account_id FROM auth_api_key_settings WHERE settings_key = ?",
+            ("primary",),
+        ).fetchone()
+        audit_row = connection.execute(
+            "SELECT action, outcome FROM auth_api_key_audit WHERE action = ? ORDER BY occurred_at DESC LIMIT 1",
+            ("save",),
+        ).fetchone()
+    assert row is not None
+    assert row[0] != "wix-api-key-123456"
+    assert row[1] != "acct-123"
+    assert audit_row == ("save", "success")
+
+
+def test_api_key_save_rejects_failed_validation(auth_settings_client, monkeypatch):
+    client = auth_settings_client["client"]
+    auth_service = auth_settings_client["auth_service"]
+
+    def _fail_test_api_key_connection(**_: object) -> ApiKeyValidationRecord:
+        return ApiKeyValidationRecord(
+            ok=False,
+            message="Connection test failed with status 401.",
+            tested_at="2026-01-01T00:00:00Z",
+            wix_account_id="acct-999",
+        )
+
+    monkeypatch.setattr(auth_service, "_test_api_key_connection", _fail_test_api_key_connection)
+
+    response = client.put(
+        "/api/admin/auth-settings/api-key",
+        json={
+            "api_key": "wix-api-key-invalid",
+            "wix_account_id": "acct-999",
+            "actor": "operator-ui",
+        },
+    )
+    assert response.status_code == 422
+    assert "Connection test failed" in response.json()["detail"]

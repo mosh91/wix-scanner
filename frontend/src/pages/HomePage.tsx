@@ -16,6 +16,7 @@ import {
   deleteEvent,
   deleteBlock,
   fetchWebhookHistory,
+  getApiKeySettings,
   getAuthTokenStatus,
   getEventReadiness,
   listBlocks,
@@ -32,7 +33,9 @@ import {
   syncManifest,
   retryWebhookDelivery,
   refreshAuthToken,
+  saveApiKeySettings,
   rotateCredential,
+  testApiKeyConnection,
   testAuthConnection,
   upsertSyncControl,
   validateAuthModeConsistency,
@@ -42,6 +45,7 @@ import {
   resetEvent,
   listResetAudit,
   type AuthMode,
+  type ApiKeySettingsResponse,
   type AuthTokenStatusResponse,
   type CredentialLifecycleRecord,
   type EventRecord,
@@ -56,7 +60,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -80,10 +84,25 @@ export default function HomePage() {
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isRotateModalOpen, setIsRotateModalOpen] = useState(false);
   const [isCredentialsHelpOpen, setIsCredentialsHelpOpen] = useState(false);
+  const [isApiKeyHelpOpen, setIsApiKeyHelpOpen] = useState(false);
+  const [isDashboardHelpOpen, setIsDashboardHelpOpen] = useState(false);
+  const [isDeliveriesHelpOpen, setIsDeliveriesHelpOpen] = useState(false);
+  const [isAuthSettingsHelpOpen, setIsAuthSettingsHelpOpen] = useState(false);
+  const [isReadinessHelpOpen, setIsReadinessHelpOpen] = useState(false);
+  const [isSyncControlsHelpOpen, setIsSyncControlsHelpOpen] = useState(false);
+  const [isReconciliationHelpOpen, setIsReconciliationHelpOpen] = useState(false);
+  const [isEventConfigHelpOpen, setIsEventConfigHelpOpen] = useState(false);
   const [rotateNewProfile, setRotateNewProfile] = useState("");
   const [rotateNewAuthMode, setRotateNewAuthMode] = useState<AuthMode>("api_key");
   const [authTokenStatus, setAuthTokenStatus] = useState<AuthTokenStatusResponse | null>(null);
   const [loadingAuthSettings, setLoadingAuthSettings] = useState(false);
+  const [apiKeySettings, setApiKeySettings] = useState<ApiKeySettingsResponse | null>(null);
+  const [loadingApiKeySettings, setLoadingApiKeySettings] = useState(false);
+  const [apiKeyValue, setApiKeyValue] = useState("");
+  const [wixAccountId, setWixAccountId] = useState("");
+  const [testingApiKey, setTestingApiKey] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<{ ok: boolean; message: string; tested_at: string } | null>(null);
   const [readinessEventId, setReadinessEventId] = useState("event-demo-01");
   const [readinessAcknowledged, setReadinessAcknowledged] = useState(false);
   const [readinessReport, setReadinessReport] = useState<
@@ -467,11 +486,30 @@ export default function HomePage() {
     }
   }, [t]);
 
+  const loadApiKeySettings = useCallback(async () => {
+    setLoadingApiKeySettings(true);
+    try {
+      const status = await getApiKeySettings();
+      setApiKeySettings(status);
+      setWixAccountId(status.wix_account_id ?? "");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.apiKeySettings.loadError"));
+    } finally {
+      setLoadingApiKeySettings(false);
+    }
+  }, [t]);
+
   useEffect(() => {
     if (activeTab === "auth-settings") {
       void loadAuthSettings();
     }
   }, [activeTab, loadAuthSettings]);
+
+  useEffect(() => {
+    if (activeTab === "api-key-management") {
+      void loadApiKeySettings();
+    }
+  }, [activeTab, loadApiKeySettings]);
 
   const handleRefreshAuthToken = async () => {
     try {
@@ -490,6 +528,48 @@ export default function HomePage() {
       toast.success(t("home.authSettings.testSuccess"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("home.authSettings.testError"));
+    }
+  };
+
+  const handleTestApiKeyConnection = async () => {
+    if (!apiKeyValue.trim()) {
+      toast.error(t("home.apiKeySettings.apiKeyRequired"));
+      return;
+    }
+    setTestingApiKey(true);
+    try {
+      const result = await testApiKeyConnection(apiKeyValue.trim(), wixAccountId.trim() || null, "operator-ui");
+      setApiKeyTestResult(result);
+      toast.success(t("home.apiKeySettings.testSuccess"));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("home.apiKeySettings.testError");
+      setApiKeyTestResult({ ok: false, message, tested_at: new Date().toISOString() });
+      toast.error(message);
+    } finally {
+      setTestingApiKey(false);
+    }
+  };
+
+  const handleSaveApiKeySettings = async () => {
+    if (!apiKeyValue.trim()) {
+      toast.error(t("home.apiKeySettings.apiKeyRequired"));
+      return;
+    }
+    if (!wixAccountId.trim()) {
+      toast.error(t("home.apiKeySettings.accountIdRequired"));
+      return;
+    }
+    setSavingApiKey(true);
+    try {
+      const status = await saveApiKeySettings(apiKeyValue.trim(), wixAccountId.trim(), "operator-ui");
+      setApiKeySettings(status);
+      setApiKeyValue("");
+      setApiKeyTestResult(null);
+      toast.success(t("home.apiKeySettings.saveSuccess"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.apiKeySettings.saveError"));
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -644,7 +724,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "api-key-management", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -657,6 +737,12 @@ export default function HomePage() {
       </div>
 
       {activeTab === "dashboard" ? (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsDashboardHelpOpen(true)}>
+              {t("home.dashboard.helpButton")}
+            </Button>
+          </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="border-border/70">
             <CardHeader>
@@ -697,13 +783,21 @@ export default function HomePage() {
             </CardContent>
           </Card>
         </div>
+        </div>
       ) : null}
 
       {activeTab === "deliveries" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.webhook.title")}</CardTitle>
-            <CardDescription>{t("home.webhook.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.webhook.title")}</CardTitle>
+                <CardDescription>{t("home.webhook.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsDeliveriesHelpOpen(true)}>
+                {t("home.webhook.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3">
@@ -938,8 +1032,15 @@ export default function HomePage() {
       {activeTab === "auth-settings" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.authSettings.title")}</CardTitle>
-            <CardDescription>{t("home.authSettings.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.authSettings.title")}</CardTitle>
+                <CardDescription>{t("home.authSettings.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsAuthSettingsHelpOpen(true)}>
+                {t("home.authSettings.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -988,11 +1089,165 @@ export default function HomePage() {
         </Card>
       ) : null}
 
+      {activeTab === "api-key-management" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.apiKeySettings.title")}</CardTitle>
+                <CardDescription>{t("home.apiKeySettings.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsApiKeyHelpOpen(true)}>
+                {t("home.apiKeySettings.helpButton")}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.apiKeyLabel")}</span>
+                <input
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  type="password"
+                  value={apiKeyValue}
+                  onChange={(event) => setApiKeyValue(event.target.value)}
+                  placeholder={t("home.apiKeySettings.apiKeyPlaceholder")}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.accountIdLabel")}</span>
+                <input
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  type="text"
+                  value={wixAccountId}
+                  onChange={(event) => setWixAccountId(event.target.value)}
+                  placeholder={t("home.apiKeySettings.accountIdPlaceholder")}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void handleTestApiKeyConnection()} disabled={testingApiKey || savingApiKey}>
+                {testingApiKey ? t("home.common.refreshing") : t("home.apiKeySettings.testConnection")}
+              </Button>
+              <Button onClick={() => void handleSaveApiKeySettings()} disabled={savingApiKey}>
+                {savingApiKey ? t("home.common.refreshing") : t("home.apiKeySettings.save")}
+              </Button>
+              <Button variant="outline" onClick={() => void loadApiKeySettings()} disabled={loadingApiKeySettings}>
+                {loadingApiKeySettings ? t("home.common.refreshing") : t("home.common.refresh")}
+              </Button>
+            </div>
+
+            {apiKeySettings ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.status")}</div>
+                  <div className="mt-1 font-medium">{apiKeySettings.api_key_configured ? t("home.apiKeySettings.configured") : t("home.apiKeySettings.notConfigured")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.accountId")}</div>
+                  <div className="mt-1 font-medium">{apiKeySettings.wix_account_id ?? t("home.apiKeySettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.lastRotated")}</div>
+                  <div className="mt-1 font-medium">{apiKeySettings.last_rotated_at ?? t("home.apiKeySettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.lastValidated")}</div>
+                  <div className="mt-1 font-medium">{apiKeySettings.last_validated_at ?? t("home.apiKeySettings.notAvailable")}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm md:col-span-2">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.lastValidationError")}</div>
+                  <div className="mt-1 font-medium">{apiKeySettings.last_validation_error ?? t("home.apiKeySettings.none")}</div>
+                </div>
+              </div>
+            ) : null}
+
+            {apiKeyTestResult ? (
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.apiKeySettings.lastTestResult")}</div>
+                <div className="mt-1 font-medium">{apiKeyTestResult.ok ? t("home.apiKeySettings.testPassed") : t("home.apiKeySettings.testFailed")}</div>
+                <div className="mt-1 text-muted-foreground">{apiKeyTestResult.message}</div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isApiKeyHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.apiKeySettings.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.apiKeySettings.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsApiKeyHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.apiKeySettings.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.apiKeySettings.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.apiKeySettings.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.apiKeySettings.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.apiKeySettings.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.apiKeySettings.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.apiKeySettings.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.apiKeySettings.helpModal.step4Body")}</p>
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.apiKeySettings.helpModal.referenceTitle")}</div>
+                <p className="mt-2 text-muted-foreground">{t("home.apiKeySettings.helpModal.referenceBody")}</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance" target="_blank" rel="noreferrer">
+                    {t("home.apiKeySettings.helpModal.referenceAppInstance")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.apiKeySettings.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-management/app-installation/skills/list-installed-apps" target="_blank" rel="noreferrer">
+                    {t("home.apiKeySettings.helpModal.referenceApps")}
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setIsApiKeyHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance" target="_blank" rel="noreferrer">
+                  {t("home.apiKeySettings.helpModal.openAppInstance")}
+                </a>
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {activeTab === "readiness" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.readiness.title")}</CardTitle>
-            <CardDescription>{t("home.readiness.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.readiness.title")}</CardTitle>
+                <CardDescription>{t("home.readiness.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsReadinessHelpOpen(true)}>
+                {t("home.readiness.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
@@ -1077,8 +1332,15 @@ export default function HomePage() {
       {activeTab === "sync-controls" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.syncControls.title")}</CardTitle>
-            <CardDescription>{t("home.syncControls.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.syncControls.title")}</CardTitle>
+                <CardDescription>{t("home.syncControls.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsSyncControlsHelpOpen(true)}>
+                {t("home.syncControls.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
@@ -1151,8 +1413,15 @@ export default function HomePage() {
       {activeTab === "reconciliation" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.reconciliation.title")}</CardTitle>
-            <CardDescription>{t("home.reconciliation.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.reconciliation.title")}</CardTitle>
+                <CardDescription>{t("home.reconciliation.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsReconciliationHelpOpen(true)}>
+                {t("home.reconciliation.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
@@ -1373,8 +1642,15 @@ export default function HomePage() {
       {activeTab === "event-config" ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>{t("home.eventConfig.title")}</CardTitle>
-            <CardDescription>{t("home.eventConfig.description")}</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>{t("home.eventConfig.title")}</CardTitle>
+                <CardDescription>{t("home.eventConfig.description")}</CardDescription>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsEventConfigHelpOpen(true)}>
+                {t("home.eventConfig.helpButton")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {eventConfigError ? (
@@ -1704,6 +1980,359 @@ export default function HomePage() {
                   </li>
                 </ul>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isDashboardHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.dashboard.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.dashboard.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsDashboardHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.dashboard.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.dashboard.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.dashboard.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.dashboard.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.dashboard.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.dashboard.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.dashboard.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.dashboard.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.dashboard.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance" target="_blank" rel="noreferrer">
+                    {t("home.dashboard.helpModal.referenceInstance")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://support.wix.com/en/article/wix-events-creating-an-event" target="_blank" rel="noreferrer">
+                    {t("home.dashboard.helpModal.referenceEvents")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsDashboardHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isDeliveriesHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.webhook.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.webhook.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsDeliveriesHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.webhook.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.webhook.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.webhook.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.webhook.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.webhook.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.webhook.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.webhook.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.webhook.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.webhook.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.webhook.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/skills/list-events" target="_blank" rel="noreferrer">
+                    {t("home.webhook.helpModal.referenceEvents")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsDeliveriesHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAuthSettingsHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.authSettings.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.authSettings.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsAuthSettingsHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.authSettings.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.authSettings.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.authSettings.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.authSettings.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.authSettings.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.authSettings.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.authSettings.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.authSettings.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.authSettings.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/sdk/auth/about-oauth" target="_blank" rel="noreferrer">
+                    {t("home.authSettings.helpModal.referenceOAuth")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance" target="_blank" rel="noreferrer">
+                    {t("home.authSettings.helpModal.referenceInstance")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsAuthSettingsHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isReadinessHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.readiness.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.readiness.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsReadinessHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.readiness.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.readiness.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.readiness.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.readiness.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.readiness.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.readiness.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.readiness.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.readiness.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.readiness.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.readiness.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/app-management/app-instance/get-app-instance" target="_blank" rel="noreferrer">
+                    {t("home.readiness.helpModal.referenceInstance")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsReadinessHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isSyncControlsHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.syncControls.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.syncControls.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsSyncControlsHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.syncControls.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.syncControls.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.syncControls.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.syncControls.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.syncControls.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.syncControls.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.syncControls.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.syncControls.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.syncControls.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.syncControls.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/skills/list-events" target="_blank" rel="noreferrer">
+                    {t("home.syncControls.helpModal.referenceEvents")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsSyncControlsHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isReconciliationHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.reconciliation.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.reconciliation.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsReconciliationHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.reconciliation.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.reconciliation.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.reconciliation.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.reconciliation.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.reconciliation.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.reconciliation.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.reconciliation.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.reconciliation.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.reconciliation.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.reconciliation.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/skills/list-events" target="_blank" rel="noreferrer">
+                    {t("home.reconciliation.helpModal.referenceEvents")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsReconciliationHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isEventConfigHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.eventConfig.helpModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.eventConfig.helpModal.subtitle")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsEventConfigHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.eventConfig.helpModal.step1Title")}</div>
+                <p className="text-muted-foreground">{t("home.eventConfig.helpModal.step1Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">2. {t("home.eventConfig.helpModal.step2Title")}</div>
+                <p className="text-muted-foreground">{t("home.eventConfig.helpModal.step2Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.eventConfig.helpModal.step3Title")}</div>
+                <p className="text-muted-foreground">{t("home.eventConfig.helpModal.step3Body")}</p>
+              </div>
+              <div>
+                <div className="font-medium">4. {t("home.eventConfig.helpModal.step4Title")}</div>
+                <p className="text-muted-foreground">{t("home.eventConfig.helpModal.step4Body")}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+                <div className="font-medium">{t("home.eventConfig.helpModal.referenceTitle")}</div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/skills/list-events" target="_blank" rel="noreferrer">
+                    {t("home.eventConfig.helpModal.referenceEvents")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction" target="_blank" rel="noreferrer">
+                    {t("home.eventConfig.helpModal.referenceTickets")}
+                  </a>
+                  <a className="text-primary underline-offset-4 hover:underline" href="https://support.wix.com/en/article/wix-events-creating-an-event" target="_blank" rel="noreferrer">
+                    {t("home.eventConfig.helpModal.referenceSupport")}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button variant="outline" onClick={() => setIsEventConfigHelpOpen(false)}>
+                {t("home.credentials.helpModal.close")}
+              </Button>
             </div>
           </div>
         </div>

@@ -29,6 +29,7 @@
       "deliveries": "Webhook Deliveries",
       "credentials": "Credentials",
       "auth-settings": "Auth Settings",
+      "api-key-management": "API Key Management",
       "readiness": "Readiness",
       "sync-controls": "Wix Sync",
       "reconciliation": "Reconciliation",
@@ -47,7 +48,23 @@
       "refreshIntegrations": "Refresh Integrations",
       "refreshDeliveries": "Refresh Deliveries",
       "healthTitle": "Operational pulse",
-      "healthDescription": "A compact overview of what needs attention before doors open."
+      "healthDescription": "A compact overview of what needs attention before doors open.",
+      "helpButton": "Getting started",
+      "helpModal": {
+        "title": "Understanding the Dashboard",
+        "subtitle": "A guide to the readiness indicators and quick actions.",
+        "step1Title": "Check operational pulse first",
+        "step1Body": "The metrics on the right show verified events, scope warnings, and failed deliveries. All-zero badges mean you are ready to scan.",
+        "step2Title": "Use Quick Actions before doors open",
+        "step2Body": "Refresh Integrations pulls the latest Wix site bindings. Refresh Deliveries syncs webhook history. Use Open Operator Screen to launch the kiosk view.",
+        "step3Title": "Navigate to the right tab if something is wrong",
+        "step3Body": "Scope warnings → go to Integrations. Webhook issues → go to Deliveries. For a full diagnostic report, go to Readiness.",
+        "step4Title": "First-time setup?",
+        "step4Body": "Start in API Key Management to connect your Wix credentials, then visit Integrations to bind a site and event, and finally use Readiness to confirm you are ready.",
+        "referenceTitle": "Wix references",
+        "referenceInstance": "Get App Instance (Wix API Docs)",
+        "referenceEvents": "Creating a Wix Event (Wix Support)"
+      }
     },
     "common": {
       "refresh": "Refresh",
@@ -60,7 +77,23 @@
       "empty": "No webhook deliveries yet.",
       "loadError": "Could not load webhook history",
       "retrySuccess": "Webhook retry executed",
-      "retryError": "Could not retry webhook"
+      "retryError": "Could not retry webhook",
+      "helpButton": "How to read deliveries",
+      "helpModal": {
+        "title": "Webhook Delivery Records",
+        "subtitle": "How to understand and act on Wix check-in webhook deliveries.",
+        "step1Title": "What a delivery record represents",
+        "step1Body": "Each row is one Wix mobile check-in event sent to the scanner. The status field shows whether the record was processed, failed, or is queued for retry.",
+        "step2Title": "When to retry a delivery",
+        "step2Body": "Retry a failed delivery if the backend was temporarily unavailable. Retries are idempotent — a ticket already checked in will not be double-processed.",
+        "step3Title": "How to find the Wix event ID",
+        "step3Body": "The event field in each row matches the Wix event ID visible in your Wix Dashboard under Events > select your event > copy the ID from the URL.",
+        "step4Title": "Empty list?",
+        "step4Body": "If no deliveries appear, check that your Wix site is bound in the Integrations tab and that the scanner app is installed and active on that Wix site.",
+        "referenceTitle": "Wix references",
+        "referenceTickets": "Tickets API (Wix API Docs)",
+        "referenceEvents": "Events API — List Events (Wix API Docs)"
+      }
     },
     "bindings": {
       "title": "Site-Event Binding Admin",
@@ -199,7 +232,71 @@
       "loadError": "Could not load auth settings",
       "notAvailable": "N/A",
       "none": "None",
-      "empty": "No auth status available yet."
+      "empty": "No auth status available yet.",
+      "helpButton": "How auth tokens work",
+      "helpModal": {
+        "title": "OAuth Token Lifecycle",
+        "subtitle": "How to monitor token health and recover from expiry.",
+        "step1Title": "What the auth modes mean",
+        "step1Body": "api_key mode uses a static Wix API key managed in the API Key Management tab. oauth mode uses a short-lived OAuth token that must be refreshed periodically.",
+        "step2Title": "When to refresh the token",
+        "step2Body": "Click 'Refresh token' if the token status shows expired or invalid. The system will request a new access token from Wix automatically.",
+        "step3Title": "Test connection before scanning",
+        "step3Body": "Click 'Test connection' to verify the current token can reach Wix without making any changes. A green result means you are ready.",
+        "step4Title": "Token keeps expiring?",
+        "step4Body": "Consider switching to api_key auth mode for long-running kiosk deployments. API keys do not expire on their own and require less maintenance.",
+        "referenceTitle": "Wix references",
+        "referenceOAuth": "About OAuth (Wix SDK Docs)",
+        "referenceInstance": "Get App Instance (Wix API Docs)"
+      }
+    },
+    "apiKeySettings": {
+      "title": "API Key Management",
+      "description": "Enter the Wix API key and account ID, test the connection first, and save only after validation succeeds.",
+      "helpButton": "How to find this",
+      "apiKeyLabel": "Wix API key",
+      "apiKeyPlaceholder": "Enter the Wix API key",
+      "accountIdLabel": "Wix account ID",
+      "accountIdPlaceholder": "Enter the Wix account ID",
+      "save": "Save API key",
+      "testConnection": "Test connection",
+      "saveSuccess": "API key saved",
+      "saveError": "Could not save API key settings",
+      "loadError": "Could not load API key settings",
+      "apiKeyRequired": "Enter the Wix API key.",
+      "accountIdRequired": "Enter the Wix account ID.",
+      "status": "Status",
+      "configured": "Configured",
+      "notConfigured": "Not configured",
+      "accountId": "Account ID",
+      "lastRotated": "Last rotated",
+      "lastValidated": "Last validated",
+      "lastValidationError": "Last validation error",
+      "lastTestResult": "Latest connection test",
+      "testPassed": "Connection test passed",
+      "testFailed": "Connection test failed",
+      "notAvailable": "N/A",
+      "none": "None",
+      "testSuccess": "Connection test completed",
+      "testError": "Connection test failed",
+      "helpModal": {
+        "title": "How to collect the API key and account ID",
+        "subtitle": "Use Wix MCP and the Wix dashboard to verify the right site context before saving API key mode settings.",
+        "step1Title": "Confirm the Wix site and app instance",
+        "step1Body": "Open Wix MCP Get App Instance to confirm the site context, installed app instance, and the app/site pairing for the venue.",
+        "step2Title": "Get the API key from Wix",
+        "step2Body": "Use the Wix dashboard or your secret manager to retrieve the API key for this environment. The key is stored locally after validation and never displayed back.",
+        "step3Title": "Collect the Wix account ID",
+        "step3Body": "Copy the Wix account ID from the account context used for this venue. If your setup uses account-scoped MCP headers, keep that value aligned with the same Wix account.",
+        "step4Title": "Test before saving",
+        "step4Body": "Paste both values, run Test connection, and only save after the connection succeeds. If the site/app context is wrong, fix that first in Wix.",
+        "referenceTitle": "References",
+        "referenceBody": "These links match the flow used by the backend validation path and Wix MCP guidance.",
+        "referenceAppInstance": "Open Wix Get App Instance",
+        "referenceTickets": "Open Wix Tickets introduction",
+        "referenceApps": "Open Wix List Installed Apps",
+        "openAppInstance": "Open Get App Instance"
+      }
     },
     "readiness": {
       "title": "Event Readiness",
@@ -232,6 +329,22 @@
         "redis_cache": "Redis cache warming",
         "backend": "Backend connectivity",
         "worker": "Worker health"
+      },
+      "helpButton": "How to read this",
+      "helpModal": {
+        "title": "Event Readiness Checks",
+        "subtitle": "What each component status means and how to resolve failures.",
+        "step1Title": "Enter the Wix event ID",
+        "step1Body": "Find your event ID in the Wix Dashboard under Events. Select your event and copy the alphanumeric ID from the URL (e.g. /events/abc123).",
+        "step2Title": "What each status means",
+        "step2Body": "'Ready' means all checks passed. 'Degraded' means at least one non-critical check failed but scanning can still work. 'Critical' means a required check failed — scanning is not safe.",
+        "step3Title": "How to resolve failed checks",
+        "step3Body": "Binding — go to Integrations and verify the site+event pair. Credentials — go to Credentials or API Key Management. Scopes — re-verify app installation. Manifest — click Sync Manifest to refresh the ticket cache.",
+        "step4Title": "Activating with degraded status",
+        "step4Body": "You can activate a degraded event by checking the acknowledgment box. Use this only when you accept the risk. Critical events cannot be activated.",
+        "referenceTitle": "Wix references",
+        "referenceTickets": "Tickets API (Wix API Docs)",
+        "referenceInstance": "Get App Instance (Wix API Docs)"
       }
     },
     "syncControls": {
@@ -254,7 +367,23 @@
       "none": "None",
       "never": "Never",
       "notAvailable": "N/A",
-      "empty": "Select an event and load sync settings."
+      "empty": "Select an event and load sync settings.",
+      "helpButton": "How sync works",
+      "helpModal": {
+        "title": "Wix Synchronization Controls",
+        "subtitle": "How to set the sync interval and understand sync health.",
+        "step1Title": "What sync does",
+        "step1Body": "The sync worker periodically fetches the latest ticket list from Wix and updates the local manifest cache. This keeps offline scanning accurate even when the backend is temporarily unreachable.",
+        "step2Title": "Choosing an interval",
+        "step2Body": "Use 1 minute for high-turnover events. Use 2 minutes for stable events with slower attendee flow. Shorter intervals mean fresher data but more Wix API calls.",
+        "step3Title": "Pausing sync",
+        "step3Body": "Disable sync before planned maintenance or when testing to avoid unexpected ticket cache updates. Re-enable sync before scanning begins.",
+        "step4Title": "Current lag is high?",
+        "step4Body": "High lag means the last successful sync was a long time ago. Check backend connectivity and confirm the worker is running in the Readiness tab.",
+        "referenceTitle": "Wix references",
+        "referenceTickets": "Tickets API (Wix API Docs)",
+        "referenceEvents": "Events API — List Events (Wix API Docs)"
+      }
     },
     "eventConfig": {
       "title": "Event Block Configuration",
@@ -300,7 +429,24 @@
       "auditActor": "Actor",
       "auditReason": "Reason",
       "auditCleared": "Cleared",
-      "auditDate": "Date"
+      "auditDate": "Date",
+      "helpButton": "How to set up events",
+      "helpModal": {
+        "title": "Event Block Configuration Guide",
+        "subtitle": "How to create events, configure scan windows, and set grace periods.",
+        "step1Title": "Find your Wix event ID",
+        "step1Body": "Open your Wix Dashboard, go to Events, select the event, and copy the ID from the browser URL bar. It looks like: /events/abc-123-def456.",
+        "step2Title": "Add a block (scan window)",
+        "step2Body": "Each block represents a time-boxed scan window (e.g. 'Morning Entry' or 'VIP Lane'). Use a short block code with no spaces and a descriptive block name.",
+        "step3Title": "Grace period",
+        "step3Body": "The grace period is extra minutes added after the official block end time before the scanner starts rejecting tickets. Set 0 for strict cutoff.",
+        "step4Title": "Priority",
+        "step4Body": "Priority controls scan order when a ticket matches multiple blocks. Lower number means higher priority. Use 100 as a safe default.",
+        "referenceTitle": "Wix references",
+        "referenceEvents": "Events API \u2014 List Events (Wix API Docs)",
+        "referenceTickets": "Tickets API (Wix API Docs)",
+        "referenceSupport": "Creating a Wix Event (Wix Support Center)"
+      }
     },
     "reconciliation": {
       "title": "Reconciliation",
@@ -329,6 +475,22 @@
         "local_only": "Local only",
         "wix_only": "Wix only",
         "conflict": "Conflict"
+      },
+      "helpButton": "How to use this",
+      "helpModal": {
+        "title": "Reconciliation Guide",
+        "subtitle": "How to detect and resolve drift between local records and Wix.",
+        "step1Title": "When to run reconciliation",
+        "step1Body": "Run after a scanning session ends or if the local check-in count does not match Wix. Reconciliation compares each ticket status locally vs Wix and identifies discrepancies.",
+        "step2Title": "Understanding drift states",
+        "step2Body": "'In sync' means local and Wix match. 'Local pending' means a scan was processed locally but not yet confirmed in Wix. 'Wix only' means Wix has a check-in the local system missed. 'Conflict' requires manual resolution.",
+        "step3Title": "Resolving conflicts",
+        "step3Body": "For each conflict, choose 'Accept Wix' to trust the Wix record, or 'Keep local' to trust the local scan. Wix is the source of truth for paid events.",
+        "step4Title": "How to find your Wix event ID",
+        "step4Body": "Open your Wix Dashboard, go to Events, select the event, and copy the ID from the browser URL (e.g. /events/abc-123).",
+        "referenceTitle": "Wix references",
+        "referenceTickets": "Tickets API (Wix API Docs)",
+        "referenceEvents": "Events API — List Events (Wix API Docs)"
       }
     }
   },

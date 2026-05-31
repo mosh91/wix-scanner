@@ -920,7 +920,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-06: API Key Management screen (API key mode)
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want a secure UI to rotate API keys so account-level Wix operations can be managed safely.
