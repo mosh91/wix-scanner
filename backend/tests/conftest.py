@@ -12,6 +12,7 @@ import pytest
 from app.main import app
 from app.services.scan_idempotency import ScanIdempotencyService
 from app.api.routes.checkins import set_scan_idempotency_service
+from app.services.event_block_config import EventBlockConfigService, set_event_block_config_service
 from app.core.config import get_settings
 
 
@@ -31,7 +32,11 @@ def backend_client(temp_db_dir):
     # Initialize scan idempotency service with test database
     idem_service = ScanIdempotencyService(db_url=test_db_url)
     set_scan_idempotency_service(idem_service)
-    
+
+    # Initialize event block config service with test database
+    ebc_service = EventBlockConfigService(db_url=test_db_url)
+    set_event_block_config_service(ebc_service)
+
     # Create test client with app
     client = TestClient(app)
     yield client

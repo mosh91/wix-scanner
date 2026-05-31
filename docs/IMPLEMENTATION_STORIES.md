@@ -966,7 +966,7 @@ Implementation notes:
 ---
 
 ### Story P2-US-08: Secret rotation and audit screen
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a compliance admin, I want a dedicated rotation and audit screen so sensitive changes are traceable.
@@ -985,7 +985,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-09: Edge relay management screen
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want to manage venue relays/kiosks and generate bootstrap QR login credentials so each door team can quickly activate the correct event context.
@@ -1015,7 +1015,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-10: Migrate remaining SQLite services to Postgres
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As a platform engineer, I want all backend services to use the shared Postgres database so that the system has a single authoritative data store, proper relational integrity, and no leftover SQLite files in production.

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from sqlalchemy import Column, String, Integer, Text, UniqueConstraint
+
 from app.core.config import Settings, get_settings
+from app.db import make_engine, make_session_factory
 
 BindingStatus = Literal["pending", "verified", "unverified", "revoked"]
 AppInstallationStatus = Literal["pending_install", "installed", "uninstalled", "failed"]
@@ -84,77 +86,77 @@ class EventActivationRecord:
     readiness_recommended_actions: list[str]
 
 
-class SiteEventBindingService:
-    def __init__(self, db_path: str, verifier: WixBindingVerifier) -> None:
-        self._db_path = str(Path(db_path))
-        self._verifier = verifier
-        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+# ── ORM models ───────────────────────────────────────────────────────────────
 
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS wix_site_event_binding (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    binding_id TEXT NOT NULL UNIQUE,
-                    wix_site_id TEXT NOT NULL,
-                    wix_event_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    app_installation_status TEXT NOT NULL,
-                    credential_profile_id TEXT,
-                    sync_policy_profile_id TEXT,
-                    binding_created_at TEXT NOT NULL,
-                    binding_verified_at TEXT,
-                    verified_by_actor TEXT,
-                    last_verification_error TEXT,
-                    verification_evidence TEXT NOT NULL DEFAULT '{}',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    UNIQUE(wix_site_id, wix_event_id)
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS event_activation (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    wix_event_id TEXT NOT NULL UNIQUE,
-                    status TEXT NOT NULL,
-                    activated_at TEXT NOT NULL,
-                    activated_by_actor TEXT NOT NULL
-                )
-                """
-            )
-            for column_sql in (
-                "ALTER TABLE event_activation ADD COLUMN readiness_status TEXT NOT NULL DEFAULT 'ready'",
-                "ALTER TABLE event_activation ADD COLUMN readiness_acknowledged INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE event_activation ADD COLUMN readiness_failed_checks TEXT NOT NULL DEFAULT '[]'",
-                "ALTER TABLE event_activation ADD COLUMN readiness_recommended_actions TEXT NOT NULL DEFAULT '[]'",
-            ):
-                try:
-                    conn.execute(column_sql)
-                except sqlite3.OperationalError:
-                    pass
-            conn.commit()
+from sqlalchemy.orm import DeclarativeBase  # noqa: E402
+
+
+class _Base(DeclarativeBase):
+    pass
+
+
+class _BindingRow(_Base):
+    __tablename__ = "wix_site_event_binding"
+    __table_args__ = (UniqueConstraint("wix_site_id", "wix_event_id"),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    binding_id = Column(String, nullable=False, unique=True)
+    wix_site_id = Column(String, nullable=False)
+    wix_event_id = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    app_installation_status = Column(String, nullable=False)
+    credential_profile_id = Column(String, nullable=True)
+    sync_policy_profile_id = Column(String, nullable=True)
+    binding_created_at = Column(String, nullable=False)
+    binding_verified_at = Column(String, nullable=True)
+    verified_by_actor = Column(String, nullable=True)
+    last_verification_error = Column(Text, nullable=True)
+    verification_evidence = Column(Text, nullable=False, default="{}")
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+
+class _EventActivationRow(_Base):
+    __tablename__ = "event_activation"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wix_event_id = Column(String, nullable=False, unique=True)
+    status = Column(String, nullable=False)
+    activated_at = Column(String, nullable=False)
+    activated_by_actor = Column(String, nullable=False)
+    readiness_status = Column(String, nullable=False, default="ready")
+    readiness_acknowledged = Column(Integer, nullable=False, default=0)
+    readiness_failed_checks = Column(Text, nullable=False, default="[]")
+    readiness_recommended_actions = Column(Text, nullable=False, default="[]")
+
+
+class SiteEventBindingService:
+    def __init__(self, db_path: str | None = None, db_url: str | None = None, *, verifier: WixBindingVerifier) -> None:
+        if db_path is not None:
+            url = f"sqlite:///{db_path}"
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            url = db_url or get_settings().database_url
+        self._verifier = verifier
+        self._engine = make_engine(url)
+        self._session_factory = make_session_factory(self._engine)
+        _Base.metadata.create_all(self._engine)
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
-    def _row_to_record(self, row: sqlite3.Row) -> WixSiteEventBindingRecord:
+    def _row_to_record(self, row: _BindingRow) -> WixSiteEventBindingRecord:
         return WixSiteEventBindingRecord(
-            binding_id=row["binding_id"],
-            wix_site_id=row["wix_site_id"],
-            wix_event_id=row["wix_event_id"],
-            status=row["status"],
-            app_installation_status=row["app_installation_status"],
-            credential_profile_id=row["credential_profile_id"],
-            sync_policy_profile_id=row["sync_policy_profile_id"],
-            binding_created_at=row["binding_created_at"],
-            binding_verified_at=row["binding_verified_at"],
-            verified_by_actor=row["verified_by_actor"],
-            last_verification_error=row["last_verification_error"],
-            verification_evidence=json.loads(row["verification_evidence"] or "{}"),
+            binding_id=row.binding_id,
+            wix_site_id=row.wix_site_id,
+            wix_event_id=row.wix_event_id,
+            status=row.status,
+            app_installation_status=row.app_installation_status,
+            credential_profile_id=row.credential_profile_id,
+            sync_policy_profile_id=row.sync_policy_profile_id,
+            binding_created_at=row.binding_created_at,
+            binding_verified_at=row.binding_verified_at,
+            verified_by_actor=row.verified_by_actor,
+            last_verification_error=row.last_verification_error,
+            verification_evidence=json.loads(row.verification_evidence or "{}"),
         )
 
     def create_binding(
@@ -169,36 +171,20 @@ class SiteEventBindingService:
     ) -> WixSiteEventBindingRecord:
         binding_id = str(uuid4())
         now = self._now()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO wix_site_event_binding (
-                    binding_id,
-                    wix_site_id,
-                    wix_event_id,
-                    status,
-                    app_installation_status,
-                    credential_profile_id,
-                    sync_policy_profile_id,
-                    binding_created_at,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    binding_id,
-                    wix_site_id,
-                    wix_event_id,
-                    "pending",
-                    "pending_install",
-                    credential_profile_id,
-                    sync_policy_profile_id,
-                    now,
-                    now,
-                    now,
-                ),
-            )
-            conn.commit()
+        with self._session_factory() as session:
+            session.add(_BindingRow(
+                binding_id=binding_id,
+                wix_site_id=wix_site_id,
+                wix_event_id=wix_event_id,
+                status="pending",
+                app_installation_status="pending_install",
+                credential_profile_id=credential_profile_id,
+                sync_policy_profile_id=sync_policy_profile_id,
+                binding_created_at=now,
+                created_at=now,
+                updated_at=now,
+            ))
+            session.commit()
 
         if verify_immediately:
             return self.verify_binding(binding_id=binding_id, verified_by_actor=created_by_actor)
@@ -206,40 +192,33 @@ class SiteEventBindingService:
         return self.get_binding(binding_id)
 
     def get_binding(self, binding_id: str) -> WixSiteEventBindingRecord:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM wix_site_event_binding WHERE binding_id = ? LIMIT 1",
-                (binding_id,),
-            ).fetchone()
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_BindingRow).where(_BindingRow.binding_id == binding_id)
+            ).scalar_one_or_none()
         if row is None:
             raise ValueError("Binding not found")
         return self._row_to_record(row)
 
     def get_binding_by_event_id(self, wix_event_id: str) -> WixSiteEventBindingRecord | None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM wix_site_event_binding WHERE wix_event_id = ? LIMIT 1",
-                (wix_event_id,),
-            ).fetchone()
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_BindingRow).where(_BindingRow.wix_event_id == wix_event_id)
+            ).scalar_one_or_none()
         if row is None:
             return None
         return self._row_to_record(row)
 
     def list_bindings(self, *, status: BindingStatus | None = None) -> list[WixSiteEventBindingRecord]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            if status is None:
-                rows = conn.execute(
-                    "SELECT * FROM wix_site_event_binding ORDER BY created_at DESC"
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM wix_site_event_binding WHERE status = ? ORDER BY created_at DESC",
-                    (status,),
-                ).fetchall()
-        return [self._row_to_record(row) for row in rows]
+        from sqlalchemy import select, desc
+        with self._session_factory() as session:
+            q = select(_BindingRow).order_by(desc(_BindingRow.created_at))
+            if status is not None:
+                q = q.where(_BindingRow.status == status)
+            rows = session.execute(q).scalars().all()
+        return [self._row_to_record(r) for r in rows]
 
     def verify_binding(self, *, binding_id: str, verified_by_actor: str) -> WixSiteEventBindingRecord:
         existing = self.get_binding(binding_id)
@@ -271,51 +250,34 @@ class SiteEventBindingService:
             "error": verification.error,
         }
 
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                UPDATE wix_site_event_binding
-                SET status = ?,
-                    app_installation_status = ?,
-                    binding_verified_at = ?,
-                    verified_by_actor = ?,
-                    last_verification_error = ?,
-                    verification_evidence = ?,
-                    updated_at = ?
-                WHERE binding_id = ?
-                """,
-                (
-                    status,
-                    app_status,
-                    verified_at,
-                    actor,
-                    verification.error,
-                    json.dumps(evidence),
-                    now,
-                    binding_id,
-                ),
-            )
-            conn.commit()
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_BindingRow).where(_BindingRow.binding_id == binding_id)
+            ).scalar_one_or_none()
+            if row is not None:
+                row.status = status
+                row.app_installation_status = app_status
+                row.binding_verified_at = verified_at
+                row.verified_by_actor = actor
+                row.last_verification_error = verification.error
+                row.verification_evidence = json.dumps(evidence)
+                row.updated_at = now
+            session.commit()
 
         return self.get_binding(binding_id)
 
     def get_verified_events(self) -> list[dict[str, str]]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT wix_event_id, wix_site_id
-                FROM wix_site_event_binding
-                WHERE status = 'verified'
-                ORDER BY created_at DESC
-                """
-            ).fetchall()
+        from sqlalchemy import select, desc
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(_BindingRow)
+                .where(_BindingRow.status == "verified")
+                .order_by(desc(_BindingRow.created_at))
+            ).scalars().all()
         return [
-            {
-                "wix_event_id": row["wix_event_id"],
-                "wix_site_id": row["wix_site_id"],
-            }
-            for row in rows
+            {"wix_event_id": r.wix_event_id, "wix_site_id": r.wix_site_id}
+            for r in rows
         ]
 
     def activate_event(self, *, wix_event_id: str, actor: str) -> EventActivationRecord:
@@ -343,41 +305,31 @@ class SiteEventBindingService:
             raise PermissionError("Event activation blocked: no verified Wix site-event binding")
 
         now = self._now()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO event_activation (
-                    wix_event_id,
-                    status,
-                    activated_at,
-                    activated_by_actor,
-                    readiness_status,
-                    readiness_acknowledged,
-                    readiness_failed_checks,
-                    readiness_recommended_actions
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(wix_event_id)
-                DO UPDATE SET status=excluded.status,
-                              activated_at=excluded.activated_at,
-                              activated_by_actor=excluded.activated_by_actor,
-                              readiness_status=excluded.readiness_status,
-                              readiness_acknowledged=excluded.readiness_acknowledged,
-                              readiness_failed_checks=excluded.readiness_failed_checks,
-                              readiness_recommended_actions=excluded.readiness_recommended_actions
-                """,
-                (
-                    wix_event_id,
-                    "active",
-                    now,
-                    actor,
-                    readiness_status,
-                    1 if readiness_acknowledged else 0,
-                    json.dumps(readiness_failed_checks),
-                    json.dumps(readiness_recommended_actions),
-                ),
-            )
-            conn.commit()
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(_EventActivationRow).where(_EventActivationRow.wix_event_id == wix_event_id)
+            ).scalar_one_or_none()
+            if existing is None:
+                session.add(_EventActivationRow(
+                    wix_event_id=wix_event_id,
+                    status="active",
+                    activated_at=now,
+                    activated_by_actor=actor,
+                    readiness_status=readiness_status,
+                    readiness_acknowledged=1 if readiness_acknowledged else 0,
+                    readiness_failed_checks=json.dumps(readiness_failed_checks),
+                    readiness_recommended_actions=json.dumps(readiness_recommended_actions),
+                ))
+            else:
+                existing.status = "active"
+                existing.activated_at = now
+                existing.activated_by_actor = actor
+                existing.readiness_status = readiness_status
+                existing.readiness_acknowledged = 1 if readiness_acknowledged else 0
+                existing.readiness_failed_checks = json.dumps(readiness_failed_checks)
+                existing.readiness_recommended_actions = json.dumps(readiness_recommended_actions)
+            session.commit()
 
         return EventActivationRecord(
             wix_event_id=wix_event_id,
@@ -404,7 +356,6 @@ def get_site_event_binding_service() -> SiteEventBindingService:
     if _site_event_binding_service is None:
         settings = get_settings()
         _site_event_binding_service = SiteEventBindingService(
-            db_path=settings.site_event_binding_db_path,
             verifier=WixBindingVerifier(settings),
         )
     return _site_event_binding_service

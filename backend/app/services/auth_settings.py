@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -10,7 +9,11 @@ from uuid import uuid4
 
 import httpx
 
+from sqlalchemy import Column, String, Text
+from sqlalchemy.orm import DeclarativeBase
+
 from app.core.config import Settings, get_settings
+from app.db import make_engine, make_session_factory
 from app.services.credential_lifecycle import CredentialLifecycleRecord, get_credential_lifecycle_service
 from app.services.credentials import get_credential_provider
 
@@ -61,56 +64,55 @@ class ApiKeyValidationRecord:
     wix_account_id: str | None
 
 
-class AuthSettingsService:
-    def __init__(self, settings: Settings | None = None, db_path: str | None = None) -> None:
-        self._settings = settings or get_settings()
-        self._db_path = str(Path(db_path or self._settings.auth_settings_db_path))
-        self._key_material = _derive_key_material(self._settings.credential_encryption_key)
-        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+class _Base(DeclarativeBase):
+    pass
 
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS auth_token_runtime (
-                    credential_id TEXT PRIMARY KEY,
-                    last_refresh_at TEXT,
-                    last_tested_at TEXT,
-                    last_error TEXT,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS auth_api_key_settings (
-                    settings_key TEXT PRIMARY KEY,
-                    encrypted_api_key TEXT NOT NULL,
-                    encrypted_wix_account_id TEXT NOT NULL,
-                    last_rotated_at TEXT,
-                    last_validated_at TEXT,
-                    last_validation_error TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    created_by_actor TEXT NOT NULL,
-                    updated_by_actor TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS auth_api_key_audit (
-                    audit_id TEXT PRIMARY KEY,
-                    action TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    outcome TEXT NOT NULL,
-                    details TEXT,
-                    occurred_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.commit()
+
+class _AuthTokenRuntimeRow(_Base):
+    __tablename__ = "auth_token_runtime"
+    credential_id = Column(String, primary_key=True)
+    last_refresh_at = Column(String, nullable=True)
+    last_tested_at = Column(String, nullable=True)
+    last_error = Column(Text, nullable=True)
+    updated_at = Column(String, nullable=False)
+
+
+class _AuthApiKeySettingsRow(_Base):
+    __tablename__ = "auth_api_key_settings"
+    settings_key = Column(String, primary_key=True)
+    encrypted_api_key = Column(Text, nullable=False)
+    encrypted_wix_account_id = Column(Text, nullable=False)
+    last_rotated_at = Column(String, nullable=True)
+    last_validated_at = Column(String, nullable=True)
+    last_validation_error = Column(Text, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    created_by_actor = Column(String, nullable=False)
+    updated_by_actor = Column(String, nullable=False)
+
+
+class _AuthApiKeyAuditRow(_Base):
+    __tablename__ = "auth_api_key_audit"
+    audit_id = Column(String, primary_key=True)
+    action = Column(String, nullable=False)
+    actor = Column(String, nullable=False)
+    outcome = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    occurred_at = Column(String, nullable=False)
+
+
+class AuthSettingsService:
+    def __init__(self, settings: Settings | None = None, db_path: str | None = None, db_url: str | None = None) -> None:
+        self._settings = settings or get_settings()
+        if db_path is not None:
+            url = f"sqlite:///{db_path}"
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            url = db_url or self._settings.database_url
+        self._key_material = _derive_key_material(self._settings.credential_encryption_key)
+        self._engine = make_engine(url)
+        self._session_factory = make_session_factory(self._engine)
+        _Base.metadata.create_all(self._engine)
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -126,15 +128,16 @@ class AuthSettingsService:
         return decrypted.decode("utf-8")
 
     def _record_api_key_audit(self, *, action: str, actor: str, outcome: str, details: str | None = None) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO auth_api_key_audit (audit_id, action, actor, outcome, details, occurred_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (str(uuid4()), action, actor, outcome, details, self._now()),
-            )
-            conn.commit()
+        with self._session_factory() as session:
+            session.add(_AuthApiKeyAuditRow(
+                audit_id=str(uuid4()),
+                action=action,
+                actor=actor,
+                outcome=outcome,
+                details=details,
+                occurred_at=self._now(),
+            ))
+            session.commit()
 
     def _write_api_key_settings(
         self,
@@ -147,67 +150,34 @@ class AuthSettingsService:
         now = self._now()
         encrypted_api_key = self._encrypt(api_key)
         encrypted_account_id = self._encrypt(wix_account_id)
-        with sqlite3.connect(self._db_path) as conn:
-            existing = conn.execute(
-                "SELECT settings_key, created_at, created_by_actor FROM auth_api_key_settings WHERE settings_key = ?",
-                ("primary",),
-            ).fetchone()
+        with self._session_factory() as session:
+            existing = session.get(_AuthApiKeySettingsRow, "primary")
             if existing is None:
-                conn.execute(
-                    """
-                    INSERT INTO auth_api_key_settings (
-                        settings_key,
-                        encrypted_api_key,
-                        encrypted_wix_account_id,
-                        last_rotated_at,
-                        last_validated_at,
-                        last_validation_error,
-                        created_at,
-                        updated_at,
-                        created_by_actor,
-                        updated_by_actor
-                    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
-                    """,
-                    (
-                        "primary",
-                        encrypted_api_key,
-                        encrypted_account_id,
-                        now,
-                        validated_at,
-                        now,
-                        now,
-                        actor,
-                        actor,
-                    ),
-                )
+                session.add(_AuthApiKeySettingsRow(
+                    settings_key="primary",
+                    encrypted_api_key=encrypted_api_key,
+                    encrypted_wix_account_id=encrypted_account_id,
+                    last_rotated_at=now,
+                    last_validated_at=validated_at,
+                    last_validation_error=None,
+                    created_at=now,
+                    updated_at=now,
+                    created_by_actor=actor,
+                    updated_by_actor=actor,
+                ))
             else:
-                conn.execute(
-                    """
-                    UPDATE auth_api_key_settings
-                    SET encrypted_api_key = ?,
-                        encrypted_wix_account_id = ?,
-                        last_rotated_at = ?,
-                        last_validated_at = ?,
-                        last_validation_error = NULL,
-                        updated_at = ?,
-                        updated_by_actor = ?
-                    WHERE settings_key = ?
-                    """,
-                    (encrypted_api_key, encrypted_account_id, now, validated_at, now, actor, "primary"),
-                )
-            conn.commit()
+                existing.encrypted_api_key = encrypted_api_key
+                existing.encrypted_wix_account_id = encrypted_account_id
+                existing.last_rotated_at = now
+                existing.last_validated_at = validated_at
+                existing.last_validation_error = None
+                existing.updated_at = now
+                existing.updated_by_actor = actor
+            session.commit()
 
     def _read_api_key_settings(self) -> ApiKeySettingsRecord:
-        with sqlite3.connect(self._db_path) as conn:
-            row = conn.execute(
-                """
-                SELECT encrypted_wix_account_id, last_rotated_at, last_validated_at,
-                       last_validation_error, updated_at, updated_by_actor
-                FROM auth_api_key_settings
-                WHERE settings_key = ?
-                """,
-                ("primary",),
-            ).fetchone()
+        with self._session_factory() as session:
+            row = session.get(_AuthApiKeySettingsRow, "primary")
         if row is None:
             return ApiKeySettingsRecord(
                 auth_mode="api_key",
@@ -222,12 +192,12 @@ class AuthSettingsService:
         return ApiKeySettingsRecord(
             auth_mode="api_key",
             api_key_configured=True,
-            wix_account_id=self._decrypt(str(row[0])),
-            last_rotated_at=str(row[1]) if row[1] else None,
-            last_validated_at=str(row[2]) if row[2] else None,
-            last_validation_error=str(row[3]) if row[3] else None,
-            updated_at=str(row[4]) if row[4] else None,
-            updated_by_actor=str(row[5]) if row[5] else None,
+            wix_account_id=self._decrypt(row.encrypted_wix_account_id),
+            last_rotated_at=row.last_rotated_at,
+            last_validated_at=row.last_validated_at,
+            last_validation_error=row.last_validation_error,
+            updated_at=row.updated_at,
+            updated_by_actor=row.updated_by_actor,
         )
 
     def _test_api_key_connection(
@@ -283,22 +253,11 @@ class AuthSettingsService:
         return None
 
     def _read_runtime(self, credential_id: str) -> tuple[str | None, str | None, str | None]:
-        with sqlite3.connect(self._db_path) as conn:
-            row = conn.execute(
-                """
-                SELECT last_refresh_at, last_tested_at, last_error
-                FROM auth_token_runtime
-                WHERE credential_id = ?
-                """,
-                (credential_id,),
-            ).fetchone()
+        with self._session_factory() as session:
+            row = session.get(_AuthTokenRuntimeRow, credential_id)
         if row is None:
             return None, None, None
-        return (
-            str(row[0]) if row[0] else None,
-            str(row[1]) if row[1] else None,
-            str(row[2]) if row[2] else None,
-        )
+        return row.last_refresh_at, row.last_tested_at, row.last_error
 
     def _write_runtime(
         self,
@@ -309,25 +268,24 @@ class AuthSettingsService:
         last_error: str | None = None,
     ) -> None:
         now = self._now()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO auth_token_runtime (
-                    credential_id,
-                    last_refresh_at,
-                    last_tested_at,
-                    last_error,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(credential_id) DO UPDATE SET
-                    last_refresh_at = COALESCE(excluded.last_refresh_at, auth_token_runtime.last_refresh_at),
-                    last_tested_at = COALESCE(excluded.last_tested_at, auth_token_runtime.last_tested_at),
-                    last_error = excluded.last_error,
-                    updated_at = excluded.updated_at
-                """,
-                (credential_id, last_refresh_at, last_tested_at, last_error, now),
-            )
-            conn.commit()
+        with self._session_factory() as session:
+            existing = session.get(_AuthTokenRuntimeRow, credential_id)
+            if existing is None:
+                session.add(_AuthTokenRuntimeRow(
+                    credential_id=credential_id,
+                    last_refresh_at=last_refresh_at,
+                    last_tested_at=last_tested_at,
+                    last_error=last_error,
+                    updated_at=now,
+                ))
+            else:
+                if last_refresh_at is not None:
+                    existing.last_refresh_at = last_refresh_at
+                if last_tested_at is not None:
+                    existing.last_tested_at = last_tested_at
+                existing.last_error = last_error
+                existing.updated_at = now
+            session.commit()
 
     def _token_status(self, credential: CredentialLifecycleRecord | None) -> str:
         if credential is None:

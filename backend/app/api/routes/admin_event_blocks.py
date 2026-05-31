@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.services.event_block_config import (
@@ -183,9 +183,10 @@ def update_event(event_id: str, request: UpdateEventRequest) -> EventResponse:
 
 
 @router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_event(event_id: str) -> None:
+def delete_event(event_id: str) -> Response:
     svc = get_event_block_config_service()
     svc.delete_event(event_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ── Block endpoints ───────────────────────────────────────────────────────────
@@ -255,12 +256,13 @@ def update_block(block_id: str, request: UpdateBlockRequest) -> BlockResponse:
 
 
 @router.delete("/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_block(block_id: str) -> None:
+def delete_block(block_id: str) -> Response:
     svc = get_event_block_config_service()
     try:
         svc.delete_block(block_id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ── Version history ───────────────────────────────────────────────────────────

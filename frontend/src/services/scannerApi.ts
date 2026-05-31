@@ -942,3 +942,189 @@ export async function listResetAudit(adminApiKey: string, limit = 50): Promise<R
   return (await response.json()) as ResetAuditRecord[];
 }
 
+// ── Credential Audit Log ─────────────────────────────────────────────────────
+
+export type CredentialAuditFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  actor?: string;
+  action?: string;
+  limit?: number;
+};
+
+export async function listCredentialAuditLog(
+  adminApiKey: string,
+  filters: CredentialAuditFilters = {},
+): Promise<CredentialLifecycleEvent[]> {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.actor) params.set("actor", filters.actor);
+  if (filters.action) params.set("action", filters.action);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE}/admin/credentials/audit${qs}`, {
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`Load credential audit log failed: ${response.status}`);
+  return (await response.json()) as CredentialLifecycleEvent[];
+}
+
+// ---------------------------------------------------------------------------
+// P2-US-09: Relay management & bootstrap credentials
+// ---------------------------------------------------------------------------
+
+export type RelayInstanceRecord = {
+  relay_id: string;
+  relay_name: string;
+  venue: string;
+  station_id: string;
+  status: "active" | "disabled";
+  last_heartbeat: string | null;
+  software_version: string | null;
+  queue_depth: number;
+  auth_token_preview: string | null;
+  credentials_rotated_at: string | null;
+  grace_expires_at: string | null;
+  notes: string | null;
+  created_at: string;
+  heartbeat_stale: boolean;
+};
+
+export type RegisterRelayResponse = RelayInstanceRecord & { auth_token: string };
+
+export type RotateRelayCredentialsResponse = {
+  relay_id: string;
+  new_auth_token: string;
+  grace_expires_at: string;
+};
+
+export type BootstrapCredentialRecord = {
+  credential_id: string;
+  relay_id: string | null;
+  station_id: string;
+  event_id: string;
+  door_id: string | null;
+  token_preview: string;
+  mode: "one_time" | "reusable_with_expiry";
+  expires_at: string;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  used_at: string | null;
+  used_by: string | null;
+  created_at: string;
+  created_by_actor: string;
+};
+
+export type CreateBootstrapCredentialResponse = BootstrapCredentialRecord & {
+  signed_token: string;
+  bootstrap_url: string;
+};
+
+export async function listRelays(adminApiKey: string): Promise<RelayInstanceRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/relays`, {
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`List relays failed: ${response.status}`);
+  return (await response.json()) as RelayInstanceRecord[];
+}
+
+export async function registerRelay(
+  adminApiKey: string,
+  data: { relay_name: string; venue: string; station_id: string; notes?: string },
+): Promise<RegisterRelayResponse> {
+  const response = await fetch(`${API_BASE}/admin/relays`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminApiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Register relay failed: ${response.status}`);
+  return (await response.json()) as RegisterRelayResponse;
+}
+
+export async function enableRelay(adminApiKey: string, relayId: string): Promise<RelayInstanceRecord> {
+  const response = await fetch(`${API_BASE}/admin/relays/${encodeURIComponent(relayId)}/enable`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`Enable relay failed: ${response.status}`);
+  return (await response.json()) as RelayInstanceRecord;
+}
+
+export async function disableRelay(adminApiKey: string, relayId: string): Promise<RelayInstanceRecord> {
+  const response = await fetch(`${API_BASE}/admin/relays/${encodeURIComponent(relayId)}/disable`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`Disable relay failed: ${response.status}`);
+  return (await response.json()) as RelayInstanceRecord;
+}
+
+export async function rotateRelayCredentials(
+  adminApiKey: string,
+  relayId: string,
+  graceMinutes = 15,
+): Promise<RotateRelayCredentialsResponse> {
+  const response = await fetch(
+    `${API_BASE}/admin/relays/${encodeURIComponent(relayId)}/rotate-credentials`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ grace_minutes: graceMinutes }),
+    },
+  );
+  if (!response.ok) throw new Error(`Rotate relay credentials failed: ${response.status}`);
+  return (await response.json()) as RotateRelayCredentialsResponse;
+}
+
+export async function listBootstrapCredentials(
+  adminApiKey: string,
+  opts: { eventId?: string; includeExpired?: boolean } = {},
+): Promise<BootstrapCredentialRecord[]> {
+  const params = new URLSearchParams();
+  if (opts.eventId) params.set("event_id", opts.eventId);
+  if (opts.includeExpired) params.set("include_expired", "true");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials${qs}`, {
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`List bootstrap credentials failed: ${response.status}`);
+  return (await response.json()) as BootstrapCredentialRecord[];
+}
+
+export async function createBootstrapCredential(
+  adminApiKey: string,
+  data: {
+    event_id: string;
+    station_id: string;
+    actor: string;
+    mode: "one_time" | "reusable_with_expiry";
+    expires_minutes: number;
+    relay_id?: string;
+    door_id?: string;
+  },
+): Promise<CreateBootstrapCredentialResponse> {
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminApiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Create bootstrap credential failed: ${response.status}`);
+  return (await response.json()) as CreateBootstrapCredentialResponse;
+}
+
+export async function revokeBootstrapCredential(
+  adminApiKey: string,
+  credentialId: string,
+  actor: string,
+): Promise<BootstrapCredentialRecord> {
+  const response = await fetch(
+    `${API_BASE}/admin/bootstrap-credentials/${encodeURIComponent(credentialId)}/revoke?actor=${encodeURIComponent(actor)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminApiKey}` },
+    },
+  );
+  if (!response.ok) throw new Error(`Revoke bootstrap credential failed: ${response.status}`);
+  return (await response.json()) as BootstrapCredentialRecord;
+}

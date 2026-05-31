@@ -44,12 +44,25 @@ import {
   verifySiteEventBinding,
   resetEvent,
   listResetAudit,
+  listCredentialAuditLog,
+  listRelays,
+  registerRelay,
+  enableRelay,
+  disableRelay,
+  rotateRelayCredentials,
+  listBootstrapCredentials,
+  createBootstrapCredential,
+  revokeBootstrapCredential,
   type AuthMode,
   type ApiKeySettingsResponse,
   type AuthTokenStatusResponse,
+  type BootstrapCredentialRecord,
+  type CredentialAuditFilters,
+  type CredentialLifecycleEvent,
   type CredentialLifecycleRecord,
   type EventRecord,
   type EventBlockRecord,
+  type RelayInstanceRecord,
   type ResetAuditRecord,
   type SiteEventBindingRecord,
   type ReconciliationItemRecord,
@@ -60,7 +73,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config" | "secret-rotation" | "relay-management";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -158,6 +171,54 @@ export default function HomePage() {
   const [resetInProgress, setResetInProgress] = useState(false);
   const [auditRecords, setAuditRecords] = useState<ResetAuditRecord[]>([]);
   const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Secret rotation & audit state
+  const [credAuditAdminKey, setCredAuditAdminKey] = useState("");
+  const [credAuditLog, setCredAuditLog] = useState<CredentialLifecycleEvent[]>([]);
+  const [credAuditLoading, setCredAuditLoading] = useState(false);
+  const [credAuditError, setCredAuditError] = useState<string | null>(null);
+  const [credAuditFilterDateFrom, setCredAuditFilterDateFrom] = useState("");
+  const [credAuditFilterDateTo, setCredAuditFilterDateTo] = useState("");
+  const [credAuditFilterActor, setCredAuditFilterActor] = useState("");
+  const [credAuditFilterAction, setCredAuditFilterAction] = useState("");
+  const [credRotateId, setCredRotateId] = useState("");
+  const [credRotateNewProfile, setCredRotateNewProfile] = useState("");
+  const [credRotateNewAuthMode, setCredRotateNewAuthMode] = useState<AuthMode>("api_key");
+  const [credRotateConfirmed, setCredRotateConfirmed] = useState(false);
+  const [credRotateInProgress, setCredRotateInProgress] = useState(false);
+
+  // Relay management state
+  const [relayAdminKey, setRelayAdminKey] = useState("");
+  const [relays, setRelays] = useState<RelayInstanceRecord[]>([]);
+  const [relayLoading, setRelayLoading] = useState(false);
+  const [relayError, setRelayError] = useState<string | null>(null);
+  const [isRelayHelpOpen, setIsRelayHelpOpen] = useState(false);
+  // Register form
+  const [regRelayName, setRegRelayName] = useState("");
+  const [regVenue, setRegVenue] = useState("");
+  const [regStationId, setRegStationId] = useState("");
+  const [regNotes, setRegNotes] = useState("");
+  const [regToken, setRegToken] = useState<string | null>(null);
+  const [regInProgress, setRegInProgress] = useState(false);
+  // Rotate relay creds
+  const [rotRelayId, setRotRelayId] = useState("");
+  const [rotGrace, setRotGrace] = useState(15);
+  const [rotToken, setRotToken] = useState<string | null>(null);
+  const [rotGraceExpires, setRotGraceExpires] = useState<string | null>(null);
+  const [rotInProgress, setRotInProgress] = useState(false);
+  // Bootstrap credentials
+  const [bootstrapCreds, setBootstrapCreds] = useState<BootstrapCredentialRecord[]>([]);
+  const [bsEventId, setBsEventId] = useState("");
+  const [bsStationId, setBsStationId] = useState("");
+  const [bsDoorId, setBsDoorId] = useState("");
+  const [bsActor, setBsActor] = useState("admin");
+  const [bsMode, setBsMode] = useState<"one_time" | "reusable_with_expiry">("one_time");
+  const [bsExpiry, setBsExpiry] = useState(60);
+  const [bsRelayId, setBsRelayId] = useState("");
+  const [bsGenerating, setBsGenerating] = useState(false);
+  const [bsLastToken, setBsLastToken] = useState<string | null>(null);
+  const [bsLastUrl, setBsLastUrl] = useState<string | null>(null);
+  const [bsCopied, setBsCopied] = useState(false);
 
   const loadEventConfig = useCallback(async () => {
     setLoadingEventConfig(true);
@@ -724,7 +785,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "api-key-management", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "api-key-management", "readiness", "sync-controls", "reconciliation", "event-config", "secret-rotation", "relay-management"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -2337,6 +2398,682 @@ export default function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {activeTab === "secret-rotation" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>{t("home.secretAudit.title")}</CardTitle>
+            <CardDescription>{t("home.secretAudit.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Admin key gate */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">{t("home.secretAudit.adminKeyLabel")}</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
+                  placeholder={t("home.secretAudit.adminKeyPlaceholder")}
+                  value={credAuditAdminKey}
+                  onChange={(e) => setCredAuditAdminKey(e.target.value)}
+                />
+                <Button
+                  className="h-9 px-3 text-xs"
+                  disabled={!credAuditAdminKey || credAuditLoading}
+                  onClick={async () => {
+                    setCredAuditLoading(true);
+                    setCredAuditError(null);
+                    try {
+                      const filters: CredentialAuditFilters = {
+                        dateFrom: credAuditFilterDateFrom || undefined,
+                        dateTo: credAuditFilterDateTo || undefined,
+                        actor: credAuditFilterActor || undefined,
+                        action: credAuditFilterAction || undefined,
+                      };
+                      const rows = await listCredentialAuditLog(credAuditAdminKey, filters);
+                      setCredAuditLog(rows);
+                    } catch {
+                      setCredAuditError(t("home.secretAudit.loadError"));
+                    } finally {
+                      setCredAuditLoading(false);
+                    }
+                  }}
+                >
+                  {credAuditLoading ? "…" : t("home.secretAudit.load")}
+                </Button>
+              </div>
+            </div>
+
+            {!credAuditAdminKey ? (
+              <p className="text-sm text-muted-foreground">{t("home.secretAudit.accessDenied")}</p>
+            ) : (
+              <>
+                {/* Filters */}
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <input
+                    className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder={t("home.secretAudit.filterDateFrom")}
+                    value={credAuditFilterDateFrom}
+                    onChange={(e) => setCredAuditFilterDateFrom(e.target.value)}
+                  />
+                  <input
+                    className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder={t("home.secretAudit.filterDateTo")}
+                    value={credAuditFilterDateTo}
+                    onChange={(e) => setCredAuditFilterDateTo(e.target.value)}
+                  />
+                  <input
+                    className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder={t("home.secretAudit.filterActor")}
+                    value={credAuditFilterActor}
+                    onChange={(e) => setCredAuditFilterActor(e.target.value)}
+                  />
+                  <input
+                    className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder={t("home.secretAudit.filterActionPlaceholder")}
+                    value={credAuditFilterAction}
+                    onChange={(e) => setCredAuditFilterAction(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    className="h-8 px-3 text-xs"
+                    variant="outline"
+                    disabled={credAuditLoading}
+                    onClick={async () => {
+                      setCredAuditLoading(true);
+                      setCredAuditError(null);
+                      try {
+                        const filters: CredentialAuditFilters = {
+                          dateFrom: credAuditFilterDateFrom || undefined,
+                          dateTo: credAuditFilterDateTo || undefined,
+                          actor: credAuditFilterActor || undefined,
+                          action: credAuditFilterAction || undefined,
+                        };
+                        const rows = await listCredentialAuditLog(credAuditAdminKey, filters);
+                        setCredAuditLog(rows);
+                      } catch {
+                        setCredAuditError(t("home.secretAudit.loadError"));
+                      } finally {
+                        setCredAuditLoading(false);
+                      }
+                    }}
+                  >
+                    {t("home.secretAudit.applyFilters")}
+                  </Button>
+                  <Button
+                    className="h-8 px-3 text-xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setCredAuditFilterDateFrom("");
+                      setCredAuditFilterDateTo("");
+                      setCredAuditFilterActor("");
+                      setCredAuditFilterAction("");
+                    }}
+                  >
+                    {t("home.secretAudit.clearFilters")}
+                  </Button>
+                </div>
+
+                {credAuditError ? (
+                  <p className="text-sm text-destructive">{credAuditError}</p>
+                ) : null}
+
+                {/* Audit log table */}
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50">
+                        <th className="px-3 py-2 text-left font-medium">{t("home.secretAudit.colTimestamp")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("home.secretAudit.colCredential")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("home.secretAudit.colActor")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("home.secretAudit.colAction")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("home.secretAudit.colNote")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {credAuditLog.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
+                            {t("home.secretAudit.empty")}
+                          </td>
+                        </tr>
+                      ) : (
+                        credAuditLog.map((ev) => (
+                          <tr key={ev.event_id} className="border-b border-border/40 last:border-0">
+                            <td className="px-3 py-2 font-mono">{ev.occurred_at}</td>
+                            <td className="px-3 py-2 font-mono">{ev.credential_id}</td>
+                            <td className="px-3 py-2">{ev.actor}</td>
+                            <td className="px-3 py-2">
+                              <span className="text-muted-foreground">{ev.from_state}</span>
+                              {" → "}
+                              <span className="font-medium">{ev.to_state}</span>
+                            </td>
+                            <td className="px-3 py-2">{ev.event_note ?? "—"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Rotate section */}
+                <div className="space-y-3 rounded-lg border border-border/70 bg-muted/30 p-4">
+                  <div>
+                    <div className="font-medium text-sm">{t("home.secretAudit.rotateSection")}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("home.secretAudit.rotateDescription")}</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">{t("home.secretAudit.colCredential")}</label>
+                      <input
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                        placeholder={t("home.secretAudit.rotateSelectPlaceholder")}
+                        value={credRotateId}
+                        onChange={(e) => setCredRotateId(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">{t("home.secretAudit.rotateNewProfileLabel")}</label>
+                      <input
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                        placeholder={t("home.secretAudit.rotateNewProfilePlaceholder")}
+                        value={credRotateNewProfile}
+                        onChange={(e) => setCredRotateNewProfile(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">{t("home.secretAudit.rotateNewAuthModeLabel")}</label>
+                      <select
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                        value={credRotateNewAuthMode}
+                        onChange={(e) => setCredRotateNewAuthMode(e.target.value as AuthMode)}
+                      >
+                        <option value="api_key">api_key</option>
+                        <option value="oauth">oauth</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={credRotateConfirmed}
+                      onChange={(e) => setCredRotateConfirmed(e.target.checked)}
+                    />
+                    {t("home.secretAudit.rotateConfirmLabel")}
+                  </label>
+                  <Button
+                    className="h-9 px-4 text-sm"
+                    variant="destructive"
+                    disabled={!credRotateId || !credRotateNewProfile || !credRotateConfirmed || credRotateInProgress}
+                    onClick={async () => {
+                      setCredRotateInProgress(true);
+                      try {
+                        await rotateCredential(credRotateId, credRotateNewProfile, credRotateNewAuthMode);
+                        toast.success(t("home.secretAudit.rotateSuccess"));
+                        setCredRotateId("");
+                        setCredRotateNewProfile("");
+                        setCredRotateConfirmed(false);
+                        // Refresh audit log
+                        const rows = await listCredentialAuditLog(credAuditAdminKey, {});
+                        setCredAuditLog(rows);
+                      } catch {
+                        toast.error(t("home.secretAudit.rotateError"));
+                      } finally {
+                        setCredRotateInProgress(false);
+                      }
+                    }}
+                  >
+                    {credRotateInProgress ? "…" : t("home.secretAudit.rotateButton")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "relay-management" ? (
+        <Card className="border-border/70">
+          <CardHeader className="flex flex-row items-start justify-between gap-2">
+            <div>
+              <CardTitle>{t("home.relayManagement.title")}</CardTitle>
+              <CardDescription>{t("home.relayManagement.description")}</CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              onClick={() => setIsRelayHelpOpen(true)}
+              title={t("home.relayManagement.helpTitle")}
+            >
+              ?
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            {/* Admin key gate */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">{t("home.relayManagement.adminKeyLabel")}</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
+                  placeholder={t("home.relayManagement.adminKeyPlaceholder")}
+                  value={relayAdminKey}
+                  onChange={(e) => setRelayAdminKey(e.target.value)}
+                />
+                <Button
+                  className="h-9 px-3 text-xs"
+                  disabled={!relayAdminKey || relayLoading}
+                  onClick={async () => {
+                    setRelayLoading(true);
+                    setRelayError(null);
+                    try {
+                      const [r, b] = await Promise.all([
+                        listRelays(relayAdminKey),
+                        listBootstrapCredentials(relayAdminKey),
+                      ]);
+                      setRelays(r);
+                      setBootstrapCreds(b);
+                    } catch {
+                      setRelayError(t("home.relayManagement.loadError"));
+                    } finally {
+                      setRelayLoading(false);
+                    }
+                  }}
+                >
+                  {relayLoading ? "…" : t("home.relayManagement.load")}
+                </Button>
+              </div>
+              {relayError && <p className="text-sm text-destructive">{relayError}</p>}
+            </div>
+
+            {!relayAdminKey ? (
+              <p className="text-sm text-muted-foreground">{t("home.relayManagement.accessDenied")}</p>
+            ) : (
+              <>
+                {/* ---------- Relay list ---------- */}
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">{t("home.relayManagement.relayListTitle")}</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={relayLoading}
+                      onClick={async () => {
+                        setRelayLoading(true);
+                        try {
+                          const r = await listRelays(relayAdminKey);
+                          setRelays(r);
+                        } catch {
+                          setRelayError(t("home.relayManagement.loadError"));
+                        } finally {
+                          setRelayLoading(false);
+                        }
+                      }}
+                    >
+                      {t("home.relayManagement.refresh")}
+                    </Button>
+                  </div>
+                  {relays.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t("home.relayManagement.emptyRelays")}</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr>
+                            {["colName", "colVenue", "colStation", "colStatus", "colHeartbeat", "colQueueDepth", "colVersion", "colCredentials", ""].map((k) => (
+                              <th key={k} className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                {k ? t(`home.relayManagement.${k}`) : ""}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relays.map((r) => (
+                            <tr key={r.relay_id} className="border-t border-border">
+                              <td className="px-3 py-2 font-medium">{r.relay_name}</td>
+                              <td className="px-3 py-2">{r.venue}</td>
+                              <td className="px-3 py-2 font-mono">{r.station_id}</td>
+                              <td className="px-3 py-2">
+                                <span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${r.status === "active" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"}`}>
+                                  {r.status === "active" ? t("home.relayManagement.statusActive") : t("home.relayManagement.statusDisabled")}
+                                </span>
+                                {r.heartbeat_stale && (
+                                  <span className="ml-1 inline-flex rounded px-1.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+                                    {t("home.relayManagement.statusStale")}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">
+                                {r.last_heartbeat ? new Date(r.last_heartbeat).toLocaleString() : "—"}
+                              </td>
+                              <td className="px-3 py-2">{r.queue_depth}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{r.software_version ?? "—"}</td>
+                              <td className="px-3 py-2 font-mono text-muted-foreground">{r.auth_token_preview ?? "—"}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex gap-1">
+                                  {r.status === "disabled" ? (
+                                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                      onClick={async () => {
+                                        try {
+                                          const updated = await enableRelay(relayAdminKey, r.relay_id);
+                                          setRelays((prev) => prev.map((x) => x.relay_id === r.relay_id ? updated : x));
+                                          toast.success(t("home.relayManagement.statusActive"));
+                                        } catch { toast.error(t("home.relayManagement.loadError")); }
+                                      }}
+                                    >{t("home.relayManagement.enableButton")}</Button>
+                                  ) : (
+                                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                      onClick={async () => {
+                                        try {
+                                          const updated = await disableRelay(relayAdminKey, r.relay_id);
+                                          setRelays((prev) => prev.map((x) => x.relay_id === r.relay_id ? updated : x));
+                                          toast.success(t("home.relayManagement.statusDisabled"));
+                                        } catch { toast.error(t("home.relayManagement.loadError")); }
+                                      }}
+                                    >{t("home.relayManagement.disableButton")}</Button>
+                                  )}
+                                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                    disabled={rotInProgress && rotRelayId === r.relay_id}
+                                    onClick={async () => {
+                                      setRotRelayId(r.relay_id);
+                                      setRotInProgress(true);
+                                      try {
+                                        const res = await rotateRelayCredentials(relayAdminKey, r.relay_id, rotGrace);
+                                        setRotToken(res.new_auth_token);
+                                        setRotGraceExpires(res.grace_expires_at);
+                                        const updated = await listRelays(relayAdminKey);
+                                        setRelays(updated);
+                                        toast.success(t("home.relayManagement.rotateCredsSuccess"));
+                                      } catch { toast.error(t("home.relayManagement.rotateCredsError")); }
+                                      finally { setRotInProgress(false); }
+                                    }}
+                                  >{t("home.relayManagement.rotateCredsButton")}</Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Rotated token display */}
+                  {rotToken && (
+                    <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 dark:bg-yellow-900/20">
+                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">{t("home.relayManagement.rotatedTokenLabel")}</p>
+                      <p className="mt-1 break-all font-mono text-xs">{rotToken}</p>
+                      {rotGraceExpires && (
+                        <p className="mt-1 text-xs text-muted-foreground">{t("home.relayManagement.rotateCredsGrace")}: {new Date(rotGraceExpires).toLocaleString()}</p>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                {/* ---------- Register relay form ---------- */}
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">{t("home.relayManagement.registerTitle")}</h3>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.registerRelayNamePlaceholder")}
+                      value={regRelayName}
+                      onChange={(e) => setRegRelayName(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.registerVenuePlaceholder")}
+                      value={regVenue}
+                      onChange={(e) => setRegVenue(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.registerStationPlaceholder")}
+                      value={regStationId}
+                      onChange={(e) => setRegStationId(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.registerNotes")}
+                      value={regNotes}
+                      onChange={(e) => setRegNotes(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    className="h-9 px-4 text-sm"
+                    disabled={!regRelayName || !regVenue || !regStationId || regInProgress}
+                    onClick={async () => {
+                      setRegInProgress(true);
+                      setRegToken(null);
+                      try {
+                        const res = await registerRelay(relayAdminKey, {
+                          relay_name: regRelayName,
+                          venue: regVenue,
+                          station_id: regStationId,
+                          notes: regNotes || undefined,
+                        });
+                        setRegToken(res.auth_token);
+                        setRelays((prev) => [...prev, res]);
+                        setRegRelayName(""); setRegVenue(""); setRegStationId(""); setRegNotes("");
+                        toast.success(t("home.relayManagement.registerSuccess"));
+                      } catch { toast.error(t("home.relayManagement.registerError")); }
+                      finally { setRegInProgress(false); }
+                    }}
+                  >
+                    {regInProgress ? "…" : t("home.relayManagement.registerButton")}
+                  </Button>
+                  {regToken && (
+                    <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 dark:bg-yellow-900/20">
+                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">{t("home.relayManagement.registerTokenLabel")}</p>
+                      <p className="mt-1 break-all font-mono text-xs">{regToken}</p>
+                    </div>
+                  )}
+                </section>
+
+                {/* ---------- Bootstrap credential generator ---------- */}
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">{t("home.relayManagement.bootstrapTitle")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("home.relayManagement.bootstrapDescription")}</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapEventIdPlaceholder")}
+                      value={bsEventId}
+                      onChange={(e) => setBsEventId(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapStationIdPlaceholder")}
+                      value={bsStationId}
+                      onChange={(e) => setBsStationId(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapDoorIdPlaceholder")}
+                      value={bsDoorId}
+                      onChange={(e) => setBsDoorId(e.target.value)}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapActorPlaceholder")}
+                      value={bsActor}
+                      onChange={(e) => setBsActor(e.target.value)}
+                    />
+                    <select
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      value={bsMode}
+                      onChange={(e) => setBsMode(e.target.value as "one_time" | "reusable_with_expiry")}
+                    >
+                      <option value="one_time">{t("home.relayManagement.bootstrapModeOneTime")}</option>
+                      <option value="reusable_with_expiry">{t("home.relayManagement.bootstrapModeReusable")}</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={5}
+                      max={1440}
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapExpiry")}
+                      value={bsExpiry}
+                      onChange={(e) => setBsExpiry(Number(e.target.value))}
+                    />
+                    <input
+                      className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder={t("home.relayManagement.bootstrapRelayId")}
+                      value={bsRelayId}
+                      onChange={(e) => setBsRelayId(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    className="h-9 px-4 text-sm"
+                    disabled={!bsEventId || !bsStationId || !bsActor || bsGenerating}
+                    onClick={async () => {
+                      setBsGenerating(true);
+                      setBsLastToken(null);
+                      setBsLastUrl(null);
+                      setBsCopied(false);
+                      try {
+                        const res = await createBootstrapCredential(relayAdminKey, {
+                          event_id: bsEventId,
+                          station_id: bsStationId,
+                          door_id: bsDoorId || undefined,
+                          actor: bsActor,
+                          mode: bsMode,
+                          expires_minutes: bsExpiry,
+                          relay_id: bsRelayId || undefined,
+                        });
+                        setBsLastToken(res.signed_token);
+                        setBsLastUrl(res.bootstrap_url);
+                        setBootstrapCreds((prev) => [res, ...prev]);
+                        toast.success(t("home.relayManagement.bootstrapSuccess"));
+                      } catch { toast.error(t("home.relayManagement.bootstrapError")); }
+                      finally { setBsGenerating(false); }
+                    }}
+                  >
+                    {bsGenerating ? "…" : t("home.relayManagement.bootstrapGenerateButton")}
+                  </Button>
+
+                  {bsLastToken && bsLastUrl && (
+                    <div className="space-y-3 rounded-lg border border-border p-4">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">{t("home.relayManagement.bootstrapTokenLabel")}</p>
+                        <p className="break-all font-mono text-xs">{bsLastToken}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-3 text-xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(bsLastToken!);
+                            setBsCopied(true);
+                            setTimeout(() => setBsCopied(false), 2000);
+                          }}
+                        >
+                          {bsCopied ? t("home.relayManagement.bootstrapCopied") : t("home.relayManagement.bootstrapCopy")}
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">{t("home.relayManagement.bootstrapQrLabel")}</p>
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(bsLastUrl)}`}
+                          alt="Bootstrap QR code"
+                          className="rounded border border-border"
+                          width={200}
+                          height={200}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                {/* ---------- Bootstrap credential list ---------- */}
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold">{t("home.relayManagement.bootstrapListTitle")}</h3>
+                  {bootstrapCreds.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t("home.relayManagement.bootstrapEmpty")}</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr>
+                            {["bootstrapColEvent", "bootstrapColStation", "bootstrapColMode", "bootstrapColExpiry", "bootstrapColStatus", "bootstrapColPreview", ""].map((k) => (
+                              <th key={k} className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                {k ? t(`home.relayManagement.${k}`) : ""}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bootstrapCreds.map((bc) => {
+                            const isRevoked = !!bc.revoked_at;
+                            const isUsed = !!bc.used_at;
+                            const statusLabel = isRevoked
+                              ? t("home.relayManagement.bootstrapStatusRevoked")
+                              : isUsed
+                              ? t("home.relayManagement.bootstrapStatusUsed")
+                              : t("home.relayManagement.bootstrapStatusActive");
+                            return (
+                              <tr key={bc.credential_id} className="border-t border-border">
+                                <td className="px-3 py-2 font-mono">{bc.event_id}</td>
+                                <td className="px-3 py-2 font-mono">{bc.station_id}</td>
+                                <td className="px-3 py-2">{bc.mode === "one_time" ? t("home.relayManagement.bootstrapModeOneTime") : t("home.relayManagement.bootstrapModeReusable")}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{new Date(bc.expires_at).toLocaleString()}</td>
+                                <td className="px-3 py-2">
+                                  <span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${isRevoked || isUsed ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"}`}>
+                                    {statusLabel}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 font-mono">{bc.token_preview}</td>
+                                <td className="px-3 py-2">
+                                  {!isRevoked && !isUsed && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-2 text-xs"
+                                      onClick={async () => {
+                                        try {
+                                          const updated = await revokeBootstrapCredential(relayAdminKey, bc.credential_id, bsActor || "admin");
+                                          setBootstrapCreds((prev) => prev.map((x) => x.credential_id === bc.credential_id ? updated : x));
+                                          toast.success(t("home.relayManagement.revokeSuccess"));
+                                        } catch { toast.error(t("home.relayManagement.revokeError")); }
+                                      }}
+                                    >
+                                      {t("home.relayManagement.revokeButton")}
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Relay management help modal */}
+      {isRelayHelpOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsRelayHelpOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-3 text-lg font-semibold">{t("home.relayManagement.helpTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{t("home.relayManagement.helpBody")}</p>
+            <Button className="mt-4 h-9 w-full" onClick={() => setIsRelayHelpOpen(false)}>
+              {t("home.relayManagement.helpClose")}
+            </Button>
+          </div>
+        </div>
+      )}
+
     </section>
   );
 }

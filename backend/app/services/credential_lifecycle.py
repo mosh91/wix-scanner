@@ -518,6 +518,44 @@ class CredentialLifecycleService:
             for r in rows
         ]
 
+    def list_all_events(
+        self,
+        *,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        actor: str | None = None,
+        action: str | None = None,
+        limit: int = 200,
+    ) -> list[CredentialLifecycleEvent]:
+        """Return lifecycle events across all credentials, newest first, with optional filters."""
+        with self._Session() as session:
+            q = session.query(_CredentialLifecycleEventRow)
+            if date_from:
+                q = q.filter(_CredentialLifecycleEventRow.occurred_at >= date_from)
+            if date_to:
+                q = q.filter(_CredentialLifecycleEventRow.occurred_at <= date_to)
+            if actor:
+                q = q.filter(_CredentialLifecycleEventRow.actor == actor)
+            if action:
+                q = q.filter(_CredentialLifecycleEventRow.to_state == action)
+            rows = (
+                q.order_by(_CredentialLifecycleEventRow.occurred_at.desc())
+                .limit(max(1, min(limit, 500)))
+                .all()
+            )
+        return [
+            CredentialLifecycleEvent(
+                event_id=r.event_id,
+                credential_id=r.credential_id,
+                from_state=r.from_state,
+                to_state=r.to_state,
+                actor=r.actor,
+                event_note=r.event_note,
+                occurred_at=r.occurred_at,
+            )
+            for r in rows
+        ]
+
     def get_auth_strategy(self) -> dict[str, dict[str, str]]:
         return AUTH_STRATEGY
 
@@ -533,3 +571,9 @@ def get_credential_lifecycle_service(
         s = settings or get_settings()
         _service_instance = CredentialLifecycleService(settings=s)
     return _service_instance
+
+
+def set_credential_lifecycle_service(service: CredentialLifecycleService | None) -> None:
+    """Override the singleton — used in tests to inject a fresh isolated service."""
+    global _service_instance  # noqa: PLW0603
+    _service_instance = service

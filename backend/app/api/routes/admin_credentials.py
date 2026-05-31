@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -145,6 +145,40 @@ def create_credential(body: CreateCredentialRequest) -> CredentialResponse:
 def list_credentials() -> list[CredentialResponse]:
     svc = get_credential_lifecycle_service()
     return [_to_response(r) for r in svc.list_credentials()]
+
+
+def _require_admin(authorization: str | None) -> None:
+    """Require Bearer token matching admin_api_key setting."""
+    if not authorization:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or token != get_settings().admin_api_key:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+@router.get(
+    "/credentials/audit",
+    response_model=list[CredentialEventResponse],
+    summary="List credential audit log across all profiles (admin only)",
+)
+def list_credential_audit(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    actor: str | None = Query(default=None),
+    action: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    authorization: str | None = Header(default=None),
+) -> list[CredentialEventResponse]:
+    _require_admin(authorization)
+    svc = get_credential_lifecycle_service()
+    events = svc.list_all_events(
+        date_from=date_from,
+        date_to=date_to,
+        actor=actor,
+        action=action,
+        limit=limit,
+    )
+    return [_event_to_response(e) for e in events]
 
 
 @router.get(

@@ -1,19 +1,65 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from time import time
 from uuid import uuid4
 
+from sqlalchemy import Column, String, Integer, Text, Index
+from sqlalchemy.orm import DeclarativeBase, Session
+
 from app.core.config import get_settings
+from app.db import make_engine, make_session_factory
 from app.services.offline_queue import get_offline_queue_service
 from app.services.ticket_manifest import ManifestTicketRecord, get_ticket_manifest_service
 from app.services.wix_client import get_wix_client
 
 ReconciliationState = str
+
+
+class _Base(DeclarativeBase):
+    pass
+
+
+class _RunRow(_Base):
+    __tablename__ = "reconciliation_run"
+    run_id = Column(String, primary_key=True)
+    event_id = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    reconciliation_state = Column(String, nullable=False)
+    drift_count = Column(Integer, nullable=False, default=0)
+    resolved_count = Column(Integer, nullable=False, default=0)
+    conflict_count = Column(Integer, nullable=False, default=0)
+    started_at = Column(String, nullable=False)
+    finished_at = Column(String, nullable=True)
+    triggered_by_actor = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_reconciliation_run_event_started", "event_id", "started_at"),
+    )
+
+
+class _ItemRow(_Base):
+    __tablename__ = "reconciliation_item"
+    item_id = Column(String, primary_key=True)
+    run_id = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    ticket_number = Column(String, nullable=False)
+    reconciliation_state = Column(String, nullable=False)
+    local_result = Column(String, nullable=True)
+    wix_result = Column(String, nullable=True)
+    resolution_result = Column(String, nullable=True)
+    detail_json = Column(Text, nullable=False)
+    resolved_at = Column(String, nullable=True)
+    conflict_resolution_notes = Column(Text, nullable=True)
+    resolved_by_actor = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_reconciliation_item_run", "run_id"),
+    )
 
 
 @dataclass(frozen=True)
@@ -54,98 +100,51 @@ class ReconciliationReport:
 
 
 class ReconciliationService:
-    def __init__(self, db_path: str | None = None) -> None:
+    def __init__(self, db_path: str | None = None, db_url: str | None = None) -> None:
         settings = get_settings()
-        self._db_path = Path(db_path or settings.reconciliation_db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        if db_path is not None:
+            url = f"sqlite:///{db_path}"
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            url = db_url or settings.database_url
+        self._engine = make_engine(url)
+        self._session_factory = make_session_factory(self._engine)
         self._manifest = get_ticket_manifest_service()
         self._queue = get_offline_queue_service()
-        self._init_db()
+        _Base.metadata.create_all(self._engine)
 
     def _now_iso(self) -> str:
         return datetime.utcnow().isoformat() + "Z"
 
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS reconciliation_run (
-                    run_id TEXT PRIMARY KEY,
-                    event_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    reconciliation_state TEXT NOT NULL,
-                    drift_count INTEGER NOT NULL,
-                    resolved_count INTEGER NOT NULL,
-                    conflict_count INTEGER NOT NULL,
-                    started_at TEXT NOT NULL,
-                    finished_at TEXT,
-                    triggered_by_actor TEXT NOT NULL,
-                    notes TEXT
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS reconciliation_item (
-                    item_id TEXT PRIMARY KEY,
-                    run_id TEXT NOT NULL,
-                    event_id TEXT NOT NULL,
-                    ticket_number TEXT NOT NULL,
-                    reconciliation_state TEXT NOT NULL,
-                    local_result TEXT,
-                    wix_result TEXT,
-                    resolution_result TEXT,
-                    detail_json TEXT NOT NULL,
-                    resolved_at TEXT,
-                    conflict_resolution_notes TEXT,
-                    resolved_by_actor TEXT,
-                    FOREIGN KEY(run_id) REFERENCES reconciliation_run(run_id)
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_reconciliation_run_event_started
-                ON reconciliation_run (event_id, started_at DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_reconciliation_item_run
-                ON reconciliation_item (run_id)
-                """
-            )
-            conn.commit()
-
-    def _to_run(self, row: sqlite3.Row) -> ReconciliationRun:
+    def _to_run(self, row: _RunRow) -> ReconciliationRun:
         return ReconciliationRun(
-            run_id=row["run_id"],
-            event_id=row["event_id"],
-            status=row["status"],
-            reconciliation_state=row["reconciliation_state"],
-            drift_count=int(row["drift_count"]),
-            resolved_count=int(row["resolved_count"]),
-            conflict_count=int(row["conflict_count"]),
-            started_at=row["started_at"],
-            finished_at=row["finished_at"],
-            triggered_by_actor=row["triggered_by_actor"],
-            notes=row["notes"],
+            run_id=row.run_id,
+            event_id=row.event_id,
+            status=row.status,
+            reconciliation_state=row.reconciliation_state,
+            drift_count=int(row.drift_count),
+            resolved_count=int(row.resolved_count),
+            conflict_count=int(row.conflict_count),
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            triggered_by_actor=row.triggered_by_actor,
+            notes=row.notes,
         )
 
-    def _to_item(self, row: sqlite3.Row) -> ReconciliationItem:
+    def _to_item(self, row: _ItemRow) -> ReconciliationItem:
         return ReconciliationItem(
-            item_id=row["item_id"],
-            run_id=row["run_id"],
-            event_id=row["event_id"],
-            ticket_number=row["ticket_number"],
-            reconciliation_state=row["reconciliation_state"],
-            local_result=row["local_result"],
-            wix_result=row["wix_result"],
-            resolution_result=row["resolution_result"],
-            detail=json.loads(row["detail_json"]),
-            resolved_at=row["resolved_at"],
-            conflict_resolution_notes=row["conflict_resolution_notes"],
-            resolved_by_actor=row["resolved_by_actor"],
+            item_id=row.item_id,
+            run_id=row.run_id,
+            event_id=row.event_id,
+            ticket_number=row.ticket_number,
+            reconciliation_state=row.reconciliation_state,
+            local_result=row.local_result,
+            wix_result=row.wix_result,
+            resolution_result=row.resolution_result,
+            detail=json.loads(row.detail_json),
+            resolved_at=row.resolved_at,
+            conflict_resolution_notes=row.conflict_resolution_notes,
+            resolved_by_actor=row.resolved_by_actor,
         )
 
     def _parse_wix_checked_in_at(self, value: object | None) -> float | None:
@@ -169,25 +168,20 @@ class ReconciliationService:
         started_at = self._now_iso()
         run_id = str(uuid4())
 
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO reconciliation_run (
-                    run_id,
-                    event_id,
-                    status,
-                    reconciliation_state,
-                    drift_count,
-                    resolved_count,
-                    conflict_count,
-                    started_at,
-                    triggered_by_actor,
-                    notes
-                ) VALUES (?, ?, 'running', 'in_sync', 0, 0, 0, ?, ?, ?)
-                """,
-                (run_id, event_id, started_at, actor, notes),
-            )
-            conn.commit()
+        with self._session_factory() as session:
+            session.add(_RunRow(
+                run_id=run_id,
+                event_id=event_id,
+                status="running",
+                reconciliation_state="in_sync",
+                drift_count=0,
+                resolved_count=0,
+                conflict_count=0,
+                started_at=started_at,
+                triggered_by_actor=actor,
+                notes=notes,
+            ))
+            session.commit()
 
         # Retry pending jobs before classifying unresolved drift.
         self._queue.process_pending_once(max_items=100)
@@ -297,56 +291,31 @@ class ReconciliationService:
             overall_state = "in_sync"
 
         finished_at = self._now_iso()
-        with sqlite3.connect(self._db_path) as conn:
-            conn.executemany(
-                """
-                INSERT INTO reconciliation_item (
-                    item_id,
-                    run_id,
-                    event_id,
-                    ticket_number,
-                    reconciliation_state,
-                    local_result,
-                    wix_result,
-                    resolution_result,
-                    detail_json,
-                    resolved_at,
-                    conflict_resolution_notes,
-                    resolved_by_actor
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        item.item_id,
-                        item.run_id,
-                        item.event_id,
-                        item.ticket_number,
-                        item.reconciliation_state,
-                        item.local_result,
-                        item.wix_result,
-                        item.resolution_result,
-                        json.dumps(item.detail, separators=(",", ":")),
-                        item.resolved_at,
-                        item.conflict_resolution_notes,
-                        item.resolved_by_actor,
-                    )
-                    for item in items
-                ],
-            )
-            conn.execute(
-                """
-                UPDATE reconciliation_run
-                SET status = 'completed',
-                    reconciliation_state = ?,
-                    drift_count = ?,
-                    resolved_count = ?,
-                    conflict_count = ?,
-                    finished_at = ?
-                WHERE run_id = ?
-                """,
-                (overall_state, drift_count, resolved_count, conflict_count, finished_at, run_id),
-            )
-            conn.commit()
+        with self._session_factory() as session:
+            for item in items:
+                session.add(_ItemRow(
+                    item_id=item.item_id,
+                    run_id=item.run_id,
+                    event_id=item.event_id,
+                    ticket_number=item.ticket_number,
+                    reconciliation_state=item.reconciliation_state,
+                    local_result=item.local_result,
+                    wix_result=item.wix_result,
+                    resolution_result=item.resolution_result,
+                    detail_json=json.dumps(item.detail, separators=(",", ":")),
+                    resolved_at=item.resolved_at,
+                    conflict_resolution_notes=item.conflict_resolution_notes,
+                    resolved_by_actor=item.resolved_by_actor,
+                ))
+            run_row = session.get(_RunRow, run_id)
+            if run_row is not None:
+                run_row.status = "completed"
+                run_row.reconciliation_state = overall_state
+                run_row.drift_count = drift_count
+                run_row.resolved_count = resolved_count
+                run_row.conflict_count = conflict_count
+                run_row.finished_at = finished_at
+            session.commit()
 
         run = self.get_run(run_id=run_id)
         if run is None:
@@ -354,59 +323,46 @@ class ReconciliationService:
         return ReconciliationReport(run=run, items=items)
 
     def get_run(self, *, run_id: str) -> ReconciliationRun | None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM reconciliation_run WHERE run_id = ?", (run_id,)).fetchone()
+        with self._session_factory() as session:
+            row = session.get(_RunRow, run_id)
         if row is None:
             return None
         return self._to_run(row)
 
     def list_runs(self, *, event_id: str, limit: int = 20) -> list[ReconciliationRun]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM reconciliation_run
-                WHERE event_id = ?
-                ORDER BY started_at DESC
-                LIMIT ?
-                """,
-                (event_id, max(1, min(limit, 100))),
-            ).fetchall()
-        return [self._to_run(row) for row in rows]
+        from sqlalchemy import select, desc
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(_RunRow)
+                .where(_RunRow.event_id == event_id)
+                .order_by(desc(_RunRow.started_at))
+                .limit(max(1, min(limit, 100)))
+            ).scalars().all()
+        return [self._to_run(r) for r in rows]
 
     def list_conflicts(self, *, event_id: str, run_id: str | None = None, limit: int = 100) -> list[ReconciliationItem]:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
+        from sqlalchemy import select, desc
+        with self._session_factory() as session:
             effective_run_id = run_id
             if effective_run_id is None:
-                latest = conn.execute(
-                    """
-                    SELECT run_id
-                    FROM reconciliation_run
-                    WHERE event_id = ?
-                    ORDER BY started_at DESC
-                    LIMIT 1
-                    """,
-                    (event_id,),
-                ).fetchone()
+                latest = session.execute(
+                    select(_RunRow.run_id)
+                    .where(_RunRow.event_id == event_id)
+                    .order_by(desc(_RunRow.started_at))
+                    .limit(1)
+                ).scalar_one_or_none()
                 if latest is None:
                     return []
-                effective_run_id = latest["run_id"]
+                effective_run_id = latest
 
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM reconciliation_item
-                WHERE run_id = ?
-                  AND reconciliation_state = 'conflict'
-                ORDER BY ticket_number ASC
-                LIMIT ?
-                """,
-                (effective_run_id, max(1, min(limit, 200))),
-            ).fetchall()
-        return [self._to_item(row) for row in rows]
+            rows = session.execute(
+                select(_ItemRow)
+                .where(_ItemRow.run_id == effective_run_id)
+                .where(_ItemRow.reconciliation_state == "conflict")
+                .order_by(_ItemRow.ticket_number)
+                .limit(max(1, min(limit, 200)))
+            ).scalars().all()
+        return [self._to_item(r) for r in rows]
 
     def resolve_conflict(
         self,
@@ -419,12 +375,9 @@ class ReconciliationService:
         if resolution not in {"accept_wix", "keep_local"}:
             raise ValueError("Unsupported resolution. Expected accept_wix or keep_local.")
 
-        with sqlite3.connect(self._db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM reconciliation_item WHERE item_id = ?",
-                (item_id,),
-            ).fetchone()
+        from sqlalchemy import select, func
+        with self._session_factory() as session:
+            row = session.get(_ItemRow, item_id)
             if row is None:
                 raise ValueError("Reconciliation item not found")
             item = self._to_item(row)
@@ -444,64 +397,36 @@ class ReconciliationService:
 
             resolved_at = self._now_iso()
             resolution_result = "manual_accept_wix" if resolution == "accept_wix" else "manual_keep_local"
-            merged_note = note or ""
-            conn.execute(
-                """
-                UPDATE reconciliation_item
-                SET reconciliation_state = 'in_sync',
-                    resolution_result = ?,
-                    resolved_at = ?,
-                    conflict_resolution_notes = ?,
-                    resolved_by_actor = ?
-                WHERE item_id = ?
-                """,
-                (resolution_result, resolved_at, merged_note, actor, item_id),
-            )
+            row.reconciliation_state = "in_sync"
+            row.resolution_result = resolution_result
+            row.resolved_at = resolved_at
+            row.conflict_resolution_notes = note or ""
+            row.resolved_by_actor = actor
 
-            unresolved = conn.execute(
-                """
-                SELECT COUNT(*)
-                FROM reconciliation_item
-                WHERE run_id = ?
-                  AND reconciliation_state = 'conflict'
-                """,
-                (item.run_id,),
-            ).fetchone()[0]
+            unresolved = session.execute(
+                select(func.count())
+                .select_from(_ItemRow)
+                .where(_ItemRow.run_id == item.run_id)
+                .where(_ItemRow.reconciliation_state == "conflict")
+            ).scalar_one()
 
-            if unresolved == 0:
-                conn.execute(
-                    """
-                    UPDATE reconciliation_run
-                    SET conflict_count = 0,
-                        reconciliation_state = CASE
-                            WHEN drift_count = resolved_count + 1 THEN 'in_sync'
-                            ELSE reconciliation_state
-                        END,
-                        resolved_count = resolved_count + 1
-                    WHERE run_id = ?
-                    """,
-                    (item.run_id,),
-                )
-            else:
-                conn.execute(
-                    """
-                    UPDATE reconciliation_run
-                    SET conflict_count = ?,
-                        resolved_count = resolved_count + 1
-                    WHERE run_id = ?
-                    """,
-                    (int(unresolved), item.run_id),
-                )
+            run_row = session.get(_RunRow, item.run_id)
+            if run_row is not None:
+                if unresolved == 0:
+                    run_row.conflict_count = 0
+                    if run_row.drift_count == run_row.resolved_count + 1:
+                        run_row.reconciliation_state = "in_sync"
+                    run_row.resolved_count = run_row.resolved_count + 1
+                else:
+                    run_row.conflict_count = int(unresolved)
+                    run_row.resolved_count = run_row.resolved_count + 1
 
-            conn.commit()
-
-            updated_row = conn.execute(
-                "SELECT * FROM reconciliation_item WHERE item_id = ?",
-                (item_id,),
-            ).fetchone()
-            if updated_row is None:
+            session.commit()
+            # Refresh the row after commit
+            updated = session.get(_ItemRow, item_id)
+            if updated is None:
                 raise RuntimeError("Conflict item disappeared after resolution")
-            return self._to_item(updated_row)
+            return self._to_item(updated)
 
 
 _reconciliation_service: ReconciliationService | None = None

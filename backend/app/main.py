@@ -66,9 +66,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     set_scan_idempotency_service(scan_idempotency)
 
     # Initialize event block config service
-    event_block_svc = EventBlockConfigService(db_path=settings.event_block_config_db_path)
+    event_block_svc = EventBlockConfigService()
     set_event_block_config_service(event_block_svc)
-    startup_logger.info("event_block_config initialized with db_path=%s", settings.event_block_config_db_path)
+    startup_logger.info("event_block_config initialized")
 
     # Initialize reset audit service (Postgres)
     reset_audit_svc = ResetAuditService()

@@ -20,14 +20,10 @@ class Settings(BaseSettings):
     credential_provider_mode: Literal["env", "db"] = "env"
     credential_db_path: str = "./data/credentials.db"
     credential_key_version: str = "v1"
-    site_event_binding_db_path: str = "./data/site_event_bindings.db"
     credential_encryption_key: str = "dev-credential-key-must-change"
     auth_mode: Literal["oauth", "api_key"] = "api_key"
     credential_expiry_warning_hours: int = 24
     credential_lifecycle_db_path: str = "./data/credential_lifecycle.db"
-    auth_settings_db_path: str = "./data/auth_settings.db"
-    reconciliation_db_path: str = "./data/reconciliation.db"
-    event_block_config_db_path: str = "./data/event_block_config.db"
     wix_timeout_ms: int = 2500
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150
@@ -49,6 +45,7 @@ class Settings(BaseSettings):
     relay_protocol_version: str = "2026-05-29"
     admin_api_key: str = "dev-admin-api-key-change-in-production"
     reset_audit_db_path: str = "./data/reset_audit.db"
+    relay_registry_db_path: str = "./data/relay_registry.db"
 
     model_config = SettingsConfigDict(
         env_file=".env",
