@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     manifest_cache_ttl_s: int = 86400
     offline_queue_max_attempts: int = 5
     offline_queue_worker_interval_s: int = 2
+    manifest_sync_worker_interval_s: int = 5
+    sync_controls_db_path: str = "./data/sync_controls.db"
     wix_webhook_secret: str = "dev-webhook-secret"
     relay_auth_token: str = "dev-relay-auth-token-change-in-production"
     relay_signing_secret: str = "dev-relay-signing-secret-change-in-production"

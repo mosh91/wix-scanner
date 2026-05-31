@@ -29,6 +29,7 @@
       "deliveries": "Entregas de Webhooks",
       "credentials": "Credenciales",
       "readiness": "Preparacion",
+      "sync-controls": "Sync Wix",
       "reconciliation": "Reconciliacion",
       "event-config": "Config. de Eventos"
     },
@@ -211,6 +212,28 @@
         "backend": "Conectividad del backend",
         "worker": "Salud de workers"
       }
+    },
+    "syncControls": {
+      "title": "Controles de sincronizacion Wix",
+      "description": "Configure la cadencia de sincronizacion por evento, active o pause el sync del worker y revise la salud del ultimo sync.",
+      "eventPlaceholder": "event-id",
+      "enabled": "Sync habilitado",
+      "disabled": "Sync deshabilitado",
+      "save": "Guardar configuracion",
+      "refresh": "Actualizar estado",
+      "saveSuccess": "Configuracion de sync guardada",
+      "saveError": "No se pudo guardar la configuracion de sync",
+      "loadError": "No se pudo cargar la configuracion de sync",
+      "lastSync": "Ultimo sync exitoso",
+      "currentLag": "Lag actual",
+      "lastError": "Ultimo error",
+      "interval60": "Cada 1 minuto",
+      "interval90": "Cada 1.5 minutos",
+      "interval120": "Cada 2 minutos",
+      "none": "Ninguno",
+      "never": "Nunca",
+      "notAvailable": "N/D",
+      "empty": "Seleccione un evento y cargue la configuracion de sync."
     },
     "eventConfig": {
       "title": "Configuración de Bloques de Evento",

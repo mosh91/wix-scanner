@@ -7,6 +7,7 @@ from app.api.routes.admin_reset import router as admin_reset_router
 from app.api.routes.admin_readiness import router as admin_readiness_router
 from app.api.routes.admin_reconciliation import router as admin_reconciliation_router
 from app.api.routes.admin_scopes import router as admin_scopes_router
+from app.api.routes.admin_sync_controls import router as admin_sync_controls_router
 from app.api.routes.bootstrap import router as bootstrap_router
 from app.api.routes.checkins import router as checkins_router
 from app.api.routes.health import router as health_router
@@ -23,6 +24,7 @@ api_router.include_router(admin_event_blocks_router, tags=["admin-event-blocks"]
 api_router.include_router(admin_readiness_router, tags=["admin-readiness"])
 api_router.include_router(admin_reconciliation_router, tags=["admin-reconciliation"])
 api_router.include_router(admin_scopes_router, tags=["admin-scopes"])
+api_router.include_router(admin_sync_controls_router, tags=["admin-sync-controls"])
 api_router.include_router(admin_credentials_router, tags=["admin-credentials"])
 api_router.include_router(admin_reset_router, tags=["admin-reset"])
 api_router.include_router(health_router, tags=["health"])

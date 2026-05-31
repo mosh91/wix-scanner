@@ -17,6 +17,7 @@ from app.middleware.request_timing import RequestTimingMiddleware
 from app.services.scan_idempotency import ScanIdempotencyService
 from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
+from app.services.sync_controls import WixSyncControlService, get_sync_control_service, set_sync_control_service
 from app.services.worker_health import get_worker_health_service
 from app.api.routes.checkins import set_scan_idempotency_service
 from app.services.reset_audit import ResetAuditService, set_reset_audit_service
@@ -45,13 +46,15 @@ async def _offline_queue_worker_loop() -> None:
 
 
 async def _manifest_sync_loop() -> None:
-    interval = 30
-    manifest_service = get_ticket_manifest_service()
+    interval = max(1, get_settings().manifest_sync_worker_interval_s)
+    sync_controls = get_sync_control_service()
+    # Ensure service is initialized even before first control is enabled.
+    get_ticket_manifest_service()
     worker_health = get_worker_health_service()
     worker_health.pulse("manifest_sync_worker")
     while True:
         await asyncio.sleep(interval)
-        manifest_service.sync_tracked_events_once()
+        sync_controls.process_due_syncs(max_items=25)
         worker_health.pulse("manifest_sync_worker")
 
 
@@ -77,6 +80,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     reset_audit_svc = ResetAuditService(db_path=settings.reset_audit_db_path)
     set_reset_audit_service(reset_audit_svc)
     startup_logger.info("reset_audit initialized with db_path=%s", settings.reset_audit_db_path)
+
+    # Initialize sync controls service
+    sync_controls_svc = WixSyncControlService(db_path=settings.sync_controls_db_path)
+    set_sync_control_service(sync_controls_svc)
+    startup_logger.info("sync_controls initialized with db_path=%s", settings.sync_controls_db_path)
 
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())

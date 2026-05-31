@@ -25,11 +25,13 @@ import {
   listLatestScopeAudits,
   listSiteEventBindings,
   listVerifiedEvents,
+  getSyncControl,
   resolveReconciliationConflict,
   runEventReconciliation,
   syncManifest,
   retryWebhookDelivery,
   rotateCredential,
+  upsertSyncControl,
   validateAuthModeConsistency,
   validateCredential,
   verifyBindingScopes,
@@ -45,11 +47,12 @@ import {
   type ReconciliationItemRecord,
   type ReconciliationRunRecord,
   type VerifiedEventRecord,
+  type WixSyncControlRecord,
   type WixScopeAuditRecord,
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness" | "reconciliation" | "event-config";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness" | "sync-controls" | "reconciliation" | "event-config";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -95,6 +98,11 @@ export default function HomePage() {
     | null
   >(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
+  const [syncControlEventId, setSyncControlEventId] = useState("event-demo-01");
+  const [syncControlEnabled, setSyncControlEnabled] = useState(true);
+  const [syncControlInterval, setSyncControlInterval] = useState(60);
+  const [syncControlStatus, setSyncControlStatus] = useState<WixSyncControlRecord | null>(null);
+  const [loadingSyncControl, setLoadingSyncControl] = useState(false);
   const [reconciliationEventId, setReconciliationEventId] = useState("event-demo-01");
   const [reconciliationRuns, setReconciliationRuns] = useState<ReconciliationRunRecord[]>([]);
   const [reconciliationConflicts, setReconciliationConflicts] = useState<ReconciliationItemRecord[]>([]);
@@ -482,6 +490,39 @@ export default function HomePage() {
     }
   };
 
+  const loadSyncControls = useCallback(async (eventId: string) => {
+    setLoadingSyncControl(true);
+    try {
+      const control = await getSyncControl(eventId);
+      setSyncControlStatus(control);
+      setSyncControlEnabled(control.enabled);
+      setSyncControlInterval(control.interval_seconds);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.syncControls.loadError"));
+    } finally {
+      setLoadingSyncControl(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab === "sync-controls") {
+      void loadSyncControls(syncControlEventId);
+    }
+  }, [activeTab, loadSyncControls, syncControlEventId]);
+
+  const handleSaveSyncControls = async () => {
+    try {
+      const updated = await upsertSyncControl(syncControlEventId, {
+        enabled: syncControlEnabled,
+        interval_seconds: syncControlInterval,
+      });
+      setSyncControlStatus(updated);
+      toast.success(t("home.syncControls.saveSuccess"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.syncControls.saveError"));
+    }
+  };
+
   const loadReconciliationOverview = useCallback(async (eventId: string) => {
     setLoadingReconciliation(true);
     try {
@@ -559,7 +600,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "readiness", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "readiness", "sync-controls", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -936,6 +977,80 @@ export default function HomePage() {
         </Card>
       ) : null}
 
+      {activeTab === "sync-controls" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>{t("home.syncControls.title")}</CardTitle>
+            <CardDescription>{t("home.syncControls.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
+              <input
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                value={syncControlEventId}
+                onChange={(e) => setSyncControlEventId(e.target.value)}
+                placeholder={t("home.syncControls.eventPlaceholder")}
+              />
+              <select
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                value={syncControlInterval}
+                onChange={(e) => setSyncControlInterval(Number(e.target.value))}
+              >
+                <option value={60}>{t("home.syncControls.interval60")}</option>
+                <option value={90}>{t("home.syncControls.interval90")}</option>
+                <option value={120}>{t("home.syncControls.interval120")}</option>
+              </select>
+              <label className="flex items-center gap-2 rounded-md border border-border px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={syncControlEnabled}
+                  onChange={(e) => setSyncControlEnabled(e.target.checked)}
+                />
+                <span>{syncControlEnabled ? t("home.syncControls.enabled") : t("home.syncControls.disabled")}</span>
+              </label>
+              <Button onClick={() => void handleSaveSyncControls()}>
+                {t("home.syncControls.save")}
+              </Button>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => void loadSyncControls(syncControlEventId)} disabled={loadingSyncControl}>
+                {loadingSyncControl ? t("home.common.refreshing") : t("home.syncControls.refresh")}
+              </Button>
+            </div>
+
+            {syncControlStatus ? (
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.syncControls.lastSync")}</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {syncControlStatus.last_successful_sync_at
+                      ? new Date(syncControlStatus.last_successful_sync_at * 1000).toLocaleString()
+                      : t("home.syncControls.never")}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.syncControls.currentLag")}</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {syncControlStatus.current_lag_seconds !== null
+                      ? `${syncControlStatus.current_lag_seconds}s`
+                      : t("home.syncControls.notAvailable")}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.syncControls.lastError")}</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {syncControlStatus.last_error ?? t("home.syncControls.none")}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("home.syncControls.empty")}</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {activeTab === "reconciliation" ? (
         <Card className="border-border/70">
           <CardHeader>
@@ -1268,8 +1383,8 @@ export default function HomePage() {
                             onChange={(e) => setResetAdminKey(e.target.value)}
                           />
                           <Button
-                            className="h-8 px-3 text-xs"
-                            variant="destructive"
+                            className="h-8 border-red-500/40 px-3 text-xs text-red-600 hover:bg-red-500/10"
+                            variant="outline"
                             disabled={resetInProgress || !resetReason.trim() || !resetActor.trim() || !resetAdminKey.trim()}
                             onClick={() => void handleResetEvent(ev.wix_event_id)}
                           >

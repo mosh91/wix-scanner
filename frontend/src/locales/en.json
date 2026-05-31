@@ -29,6 +29,7 @@
       "deliveries": "Webhook Deliveries",
       "credentials": "Credentials",
       "readiness": "Readiness",
+      "sync-controls": "Wix Sync",
       "reconciliation": "Reconciliation",
       "event-config": "Event Config"
     },
@@ -211,6 +212,28 @@
         "backend": "Backend connectivity",
         "worker": "Worker health"
       }
+    },
+    "syncControls": {
+      "title": "Wix Synchronization Controls",
+      "description": "Configure per-event sync cadence, enable or pause worker sync, and review latest sync health.",
+      "eventPlaceholder": "event-id",
+      "enabled": "Sync enabled",
+      "disabled": "Sync disabled",
+      "save": "Save settings",
+      "refresh": "Refresh status",
+      "saveSuccess": "Sync settings saved",
+      "saveError": "Could not save sync settings",
+      "loadError": "Could not load sync settings",
+      "lastSync": "Last successful sync",
+      "currentLag": "Current lag",
+      "lastError": "Last error",
+      "interval60": "Every 1 minute",
+      "interval90": "Every 1.5 minutes",
+      "interval120": "Every 2 minutes",
+      "none": "None",
+      "never": "Never",
+      "notAvailable": "N/A",
+      "empty": "Select an event and load sync settings."
     },
     "eventConfig": {
       "title": "Event Block Configuration",

@@ -157,6 +157,17 @@ export type ManifestSyncResponse = {
   source_revision: string;
 };
 
+export type WixSyncControlRecord = {
+  event_id: string;
+  enabled: boolean;
+  interval_seconds: number;
+  last_successful_sync_at: number | null;
+  last_attempt_at: number | null;
+  current_lag_seconds: number | null;
+  last_error: string | null;
+  updated_at: number;
+};
+
 export type VerifiedEventRecord = {
   wix_event_id: string;
   wix_site_id: string;
@@ -370,6 +381,29 @@ export async function syncManifest(eventId: string): Promise<ManifestSyncRespons
     throw new Error(`Sync manifest failed with status ${response.status}`);
   }
   return (await response.json()) as ManifestSyncResponse;
+}
+
+export async function getSyncControl(eventId: string): Promise<WixSyncControlRecord> {
+  const response = await fetch(`${API_BASE}/admin/sync-controls/events/${encodeURIComponent(eventId)}`);
+  if (!response.ok) {
+    throw new Error(`Get sync control failed with status ${response.status}`);
+  }
+  return (await response.json()) as WixSyncControlRecord;
+}
+
+export async function upsertSyncControl(
+  eventId: string,
+  req: { enabled: boolean; interval_seconds: number },
+): Promise<WixSyncControlRecord> {
+  const response = await fetch(`${API_BASE}/admin/sync-controls/events/${encodeURIComponent(eventId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    throw new Error(`Save sync control failed with status ${response.status}`);
+  }
+  return (await response.json()) as WixSyncControlRecord;
 }
 
 export async function runEventReconciliation(

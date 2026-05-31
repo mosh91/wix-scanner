@@ -882,7 +882,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-04: Wix synchronization controls screen
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want to configure Wix sync behavior so local and Wix check-in data remain aligned.
