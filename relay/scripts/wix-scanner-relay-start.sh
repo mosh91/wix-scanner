@@ -1,7 +1,7 @@
 #!/bin/bash
 # Wix Scanner Edge Relay Auto-Start Script
-# Place in /usr/local/bin/wix-scanner-relay-start and make executable
-# Then reference in systemd unit file or cron job
+# Intended to be launched by systemd from the relay project directory.
+# Runs uvicorn in the foreground so systemd can supervise the relay process.
 
 set -e
 
@@ -22,8 +22,5 @@ if [ -f "$RELAY_VENV/bin/activate" ]; then
 fi
 
 export PYTHONUNBUFFERED=1
-uvicorn app.main:app --host 0.0.0.0 --port "$RELAY_PORT" >> "$RELAY_LOG" 2>&1 &
-
-RELAY_PID=$!
-echo $RELAY_PID > /var/run/wix-scanner-relay.pid
-echo "Relay started with PID $RELAY_PID"
+# Keep process in foreground so systemd can manage lifecycle directly.
+exec uvicorn app.main:app --host 0.0.0.0 --port "$RELAY_PORT" >> "$RELAY_LOG" 2>&1

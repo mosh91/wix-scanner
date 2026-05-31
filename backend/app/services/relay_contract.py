@@ -46,6 +46,13 @@ def verify_signature(secret: str, envelope: RelayContractEnvelope, signature: st
 
 
 def is_timestamp_fresh(sent_at: str) -> bool:
-    parsed = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return False
+
     now = datetime.now(UTC)
     return now - MAX_CLOCK_SKEW <= parsed <= now + MAX_CLOCK_SKEW

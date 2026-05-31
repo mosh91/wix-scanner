@@ -4,6 +4,7 @@ from enum import Enum
 from hashlib import sha1
 import logging
 from threading import Lock
+from typing import NoReturn
 from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
@@ -105,7 +106,7 @@ def _raise_relay_contract_error(
     status_code: int,
     detail: str,
     ack_outcome: str,
-) -> None:
+) -> NoReturn:
     raise HTTPException(
         status_code=status_code,
         detail=detail,
@@ -272,16 +273,30 @@ def scan_ticket(
                 scan_event_id=request.scan_event_id,
             )
             if dup_check.is_duplicate and dup_check.previous_outcome:
+                duplicate_record = idem_service.get_record(request.scan_event_id)
+                duplicate_event_id = (
+                    str(duplicate_record.event_id)
+                    if duplicate_record
+                    else request.active_event_id or "demo-event"
+                )
+                duplicate_ticket_number = (
+                    str(duplicate_record.ticket_number) if duplicate_record else ""
+                )
+                duplicate_status = (
+                    ScanStatus[dup_check.previous_outcome.lower()]
+                    if dup_check.previous_outcome in [s.value for s in ScanStatus]
+                    else ScanStatus.invalid_ticket
+                )
                 if request.source == "relay":
                     _set_relay_ack_headers(response, "duplicate")
                 # Return cached outcome for duplicate
                 return ScanResponse(
-                    status=ScanStatus[dup_check.previous_outcome.lower()] if dup_check.previous_outcome in [s.value for s in ScanStatus] else ScanStatus.invalid_ticket,
-                    accepted=dup_check.previous_outcome in ["checked_in", "queued_offline"],
-                    event_id=request.active_event_id or "demo-event",
+                    status=duplicate_status,
+                    accepted=duplicate_status in {ScanStatus.checked_in, ScanStatus.queued_offline},
+                    event_id=duplicate_event_id,
                     block_id="general",
                     operation_type="checkin",
-                    ticket_number="",
+                    ticket_number=duplicate_ticket_number,
                     reason="Duplicate scan event detected",
                     error_code="DUPLICATE_EVENT",
                     wix_status="duplicate",
@@ -293,7 +308,7 @@ def scan_ticket(
     try:
         parsed = parse_qr_payload(request.payload, active_event_id=request.active_event_id)
     except QRParseError as exc:
-        status = ScanStatus.invalid_ticket
+        scan_status = ScanStatus.invalid_ticket
         accepted = False
         reason = str(exc)
         error_code = "INVALID_TICKET"
@@ -322,7 +337,7 @@ def scan_ticket(
         manifest_record = manifest.get_ticket(event_id=event_id, ticket_number=ticket_number)
         if manifest_record is not None and manifest_record.manifest_state == "checked_in":
             offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
-            status = ScanStatus.already_checked_in
+            scan_status = ScanStatus.already_checked_in
             accepted = False
             reason = "Ticket ya registrado via sincronizacion local."
             error_code = "ALREADY_CHECKED_IN"
@@ -339,7 +354,7 @@ def scan_ticket(
                 offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
                 offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
                 manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
-                status = ScanStatus.checked_in
+                scan_status = ScanStatus.checked_in
                 accepted = True
                 reason = wix_result.reason
                 error_code = wix_result.error_code
@@ -348,7 +363,7 @@ def scan_ticket(
                 offline_queue.mark_processed(event_id=event_id, ticket_number=ticket_number)
                 offline_queue.remember_manifest_ticket(event_id=event_id, ticket_number=ticket_number)
                 manifest.mark_checked_in(event_id=event_id, ticket_number=ticket_number)
-                status = ScanStatus.already_checked_in
+                scan_status = ScanStatus.already_checked_in
                 accepted = False
                 reason = wix_result.reason
                 error_code = wix_result.error_code
@@ -366,37 +381,37 @@ def scan_ticket(
                         )
                     )
                     if enqueue.enqueued:
-                        status = ScanStatus.queued_offline
+                        scan_status = ScanStatus.queued_offline
                         accepted = True
                         reason = "Ticket validado localmente. Check-in encolado para sincronizacion."
                         error_code = "QUEUED_OFFLINE"
                         wix_status = "queued_offline"
                     elif enqueue.reason == "already_processed":
-                        status = ScanStatus.already_checked_in
+                        scan_status = ScanStatus.already_checked_in
                         accepted = False
                         reason = "Ticket ya procesado previamente."
                         error_code = "ALREADY_CHECKED_IN"
                         wix_status = "duplicate"
                     else:
-                        status = ScanStatus.queued_offline
+                        scan_status = ScanStatus.queued_offline
                         accepted = True
                         reason = "Ticket ya en cola offline."
                         error_code = "ALREADY_QUEUED"
                         wix_status = "queued_offline"
                 else:
-                    status = ScanStatus.invalid_ticket
+                    scan_status = ScanStatus.invalid_ticket
                     accepted = False
                     reason = "No se encontro ticket en cache local para operar offline."
                     error_code = wix_result.error_code
                     wix_status = wix_result.wix_status
             elif wix_result.outcome in {"auth_error"}:
-                status = ScanStatus.invalid_ticket
+                scan_status = ScanStatus.invalid_ticket
                 accepted = False
                 reason = wix_result.reason
                 error_code = wix_result.error_code
                 wix_status = wix_result.wix_status
             else:
-                status = ScanStatus.invalid_ticket
+                scan_status = ScanStatus.invalid_ticket
                 accepted = False
                 reason = wix_result.reason
                 error_code = wix_result.error_code
@@ -416,7 +431,7 @@ def scan_ticket(
         session_id=request.session_id,
         operator_id=request.operator_id,
         success=accepted,
-        status=status.value,
+        status=scan_status.value,
         error_code=error_code,
         scanner_status=request.scanner_status,
         ticket_number=ticket_number,
@@ -426,7 +441,7 @@ def scan_ticket(
     )
 
     scan_response = ScanResponse(
-        status=status,
+        status=scan_status,
         accepted=accepted,
         event_id=event_id,
         block_id=block_id,
@@ -442,9 +457,9 @@ def scan_ticket(
 
     if request.source == "relay":
         ack_outcome = "accepted"
-        if status == ScanStatus.invalid_ticket:
+        if scan_status == ScanStatus.invalid_ticket:
             ack_outcome = "invalid"
-        elif status == ScanStatus.already_checked_in:
+        elif scan_status == ScanStatus.already_checked_in:
             ack_outcome = "conflict"
         _set_relay_ack_headers(response, ack_outcome)
 
@@ -459,7 +474,7 @@ def scan_ticket(
                 event_id=event_id,
                 ticket_number=ticket_number,
                 scan_event_id=request.scan_event_id,
-                outcome=status.value,
+                outcome=scan_status.value,
                 source=request.source,
                 error_message=reason,
             )

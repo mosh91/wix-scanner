@@ -197,3 +197,92 @@ The setup order above is consistent with:
   - Docs: https://dev.wix.com/docs/api-reference/business-solutions/events/registration/ticketing/tickets/introduction
 
 These external docs align with backend routes and readiness gates implemented in this repository.
+
+## Mock Ticket QR Catalog (for `WIX_SCANNER_WIX_MOCK_MODE=true`)
+
+Use these payloads as the QR content (text encoded in the QR image).
+
+Important:
+
+- For mock tests, the ticket outcome is determined by ticket text patterns.
+- Real Wix ticket ownership/check-in truth is not validated while mock mode is enabled.
+
+### 1) Success (CHECKED_IN)
+
+QR payload text examples:
+
+- `TICKET-12345`
+- `eventId=evento-001;ticketNumber=TICKET-12345`
+
+Expected result:
+
+- `status=CHECKED_IN`
+
+### 2) Duplicate simulation (ALREADY_CHECKED_IN)
+
+QR payload text examples:
+
+- `DUP-12345`
+- `ALREADY-12345`
+- `eventId=evento-001;ticketNumber=DUP-12345`
+
+Expected result:
+
+- `status=ALREADY_CHECKED_IN`
+
+### 3) Rate-limit simulation (QUEUED_OFFLINE if ticket exists in local manifest cache)
+
+QR payload text examples:
+
+- `RATE-12345`
+- `eventId=evento-001;ticketNumber=RATE-12345`
+
+Expected result:
+
+- Usually `status=INVALID_TICKET` unless the ticket is known in local manifest cache.
+- If known in manifest cache, then `status=QUEUED_OFFLINE` path can be exercised.
+
+### 4) Upstream 5xx simulation (QUEUED_OFFLINE if ticket exists in local manifest cache)
+
+QR payload text examples:
+
+- `WIX5XX-12345`
+- `eventId=evento-001;ticketNumber=WIX5XX-12345`
+
+Expected result:
+
+- Usually `status=INVALID_TICKET` unless the ticket is known in local manifest cache.
+- If known in manifest cache, then `status=QUEUED_OFFLINE` path can be exercised.
+
+### 5) Forced invalid parsing
+
+QR payload text examples:
+
+- `INVALID-12345`
+
+Expected result:
+
+- `status=INVALID_TICKET`
+
+### 6) Wix Events URL format parsing test
+
+QR payload text example:
+
+- `https://www.wixevents.com/check-in/ABC123,evento-001`
+
+Expected result in mock mode:
+
+- URL format is parsed correctly (`ticketNumber=ABC123`, `eventId=evento-001`).
+- Outcome still follows mock behavior, not real Wix state.
+
+## Optional: quick local API test without generating QR image
+
+You can test scanner outcomes directly with API calls:
+
+```bash
+curl -s -X POST "http://localhost:8000/api/checkins/scan" \
+  -H "Content-Type: application/json" \
+  -d '{"payload":"TICKET-12345","active_event_id":"evento-001"}'
+```
+
+Replace payload with any catalog value above.

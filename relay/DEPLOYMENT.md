@@ -95,7 +95,8 @@ curl -X POST http://relay-ip:9000/api/relay/scans \
   -d '{
     "event_id": "evt-123",
     "ticket_number": "TICKET-001",
-    "payload": "eventId=evt-123;ticketNumber=TICKET-001"
+    "payload": "eventId=evt-123;ticketNumber=TICKET-001",
+    "scan_event_id": "550e8400-e29b-41d4-a716-446655440000"
   }'
 ```
 
@@ -106,6 +107,7 @@ Response:
   "outcome": "forwarded",
   "message": "Scan forwarded to cloud backend.",
   "relay_request_id": "uuid-here",
+  "scan_event_id": "550e8400-e29b-41d4-a716-446655440000",
   "cloud_forwarded": true
 }
 ```

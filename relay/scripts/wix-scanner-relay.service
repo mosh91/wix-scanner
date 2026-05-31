@@ -5,9 +5,9 @@ After=network.target
 [Service]
 Type=simple
 User=wix
-WorkingDirectory=/opt/wix-scanner-relay
-EnvironmentFile=/opt/wix-scanner-relay/.env
-ExecStart=/opt/wix-scanner-relay/scripts/wix-scanner-relay-start.sh
+WorkingDirectory=/opt/wix-scanner-relay/relay
+EnvironmentFile=/opt/wix-scanner-relay/relay/.env
+ExecStart=/opt/wix-scanner-relay/relay/scripts/wix-scanner-relay-start.sh
 Restart=always
 RestartSec=10
 
