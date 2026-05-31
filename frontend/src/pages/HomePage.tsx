@@ -35,6 +35,7 @@ import {
   refreshAuthToken,
   saveApiKeySettings,
   rotateCredential,
+  revokeCredential,
   testApiKeyConnection,
   testAuthConnection,
   upsertSyncControl,
@@ -73,7 +74,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config" | "secret-rotation" | "relay-management";
+type HomeTab = "setup" | "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config" | "secret-rotation" | "relay-management";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -85,7 +86,7 @@ export default function HomePage() {
   const [scopeAudits, setScopeAudits] = useState<Record<string, WixScopeAuditRecord>>({});
   const [newSiteId, setNewSiteId] = useState("site-demo-01");
   const [newEventId, setNewEventId] = useState("event-demo-01");
-  const [activeTab, setActiveTab] = useState<HomeTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<HomeTab>("setup");
   const [isBindingHelpOpen, setIsBindingHelpOpen] = useState(false);
 
   // Credential lifecycle state
@@ -351,6 +352,10 @@ export default function HomePage() {
     };
   }, [bindings, scopeAudits, webhookHistory, verifiedEvents.length]);
 
+  const primaryBinding = bindings[0] ?? null;
+  const primaryEventId = primaryBinding?.wix_event_id ?? verifiedEvents[0]?.wix_event_id ?? newEventId;
+  const primarySiteId = primaryBinding?.wix_site_id ?? newSiteId;
+
   const loadWebhookHistory = useCallback(async () => {
     setLoadingWebhooks(true);
     try {
@@ -522,6 +527,16 @@ export default function HomePage() {
     }
   };
 
+  const handleRevokeCredential = async (credentialId: string) => {
+    try {
+      await revokeCredential(credentialId, "operator-ui");
+      toast.success(t("home.credentials.revokeSuccess"));
+      await loadCredentials();
+    } catch {
+      toast.error(t("home.credentials.loadError"));
+    }
+  };
+
   const handleCheckAuthConsistency = async () => {
     try {
       const result = await validateAuthModeConsistency();
@@ -561,13 +576,13 @@ export default function HomePage() {
   }, [t]);
 
   useEffect(() => {
-    if (activeTab === "auth-settings") {
+    if (activeTab === "auth-settings" || activeTab === "setup") {
       void loadAuthSettings();
     }
   }, [activeTab, loadAuthSettings]);
 
   useEffect(() => {
-    if (activeTab === "api-key-management") {
+    if (activeTab === "api-key-management" || activeTab === "setup") {
       void loadApiKeySettings();
     }
   }, [activeTab, loadApiKeySettings]);
@@ -785,7 +800,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "auth-settings", "api-key-management", "readiness", "sync-controls", "reconciliation", "event-config", "secret-rotation", "relay-management"] as HomeTab[]).map((tab) => (
+        {(["setup", "integrations", "deliveries", "readiness", "sync-controls", "reconciliation", "event-config", "relay-management", "secret-rotation"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -796,6 +811,63 @@ export default function HomePage() {
           </Button>
         ))}
       </div>
+
+      {activeTab === "setup" ? (
+        <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+          <Card className="border-border/70 bg-[linear-gradient(145deg,rgba(255,255,255,1)_0%,rgba(241,245,249,0.8)_100%)]">
+            <CardHeader>
+              <CardTitle>{t("home.setup.title")}</CardTitle>
+              <CardDescription>{t("home.setup.description")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+                <input
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                  value={newSiteId}
+                  onChange={(event) => setNewSiteId(event.target.value)}
+                  placeholder={t("home.bindings.sitePlaceholder")}
+                />
+                <input
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                  value={newEventId}
+                  onChange={(event) => setNewEventId(event.target.value)}
+                  placeholder={t("home.bindings.eventPlaceholder")}
+                />
+                <Button onClick={() => void handleCreateBinding()}>{t("home.bindings.create")}</Button>
+                <Button variant="secondary" onClick={() => void loadBindings()} disabled={loadingBindings}>
+                  {loadingBindings ? t("home.common.refreshing") : t("home.common.refresh")}
+                </Button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-border/70 bg-background p-4">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.setup.activeSite")}</div>
+                  <div className="mt-1 text-lg font-semibold">{primarySiteId || t("home.setup.notBound")}</div>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-background p-4">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.setup.activeEvent")}</div>
+                  <div className="mt-1 text-lg font-semibold">{primaryEventId || t("home.setup.notBound")}</div>
+                </div>
+              </div>
+
+              <p className="text-sm text-muted-foreground">{t("home.setup.singleContextHint")}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 bg-muted/30">
+            <CardHeader>
+              <CardTitle>{t("home.setup.flowTitle")}</CardTitle>
+              <CardDescription>{t("home.setup.flowDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="rounded-lg border border-border/70 bg-background px-3 py-2">1. {t("home.setup.flowStep1")}</div>
+              <div className="rounded-lg border border-border/70 bg-background px-3 py-2">2. {t("home.setup.flowStep2")}</div>
+              <div className="rounded-lg border border-border/70 bg-background px-3 py-2">3. {t("home.setup.flowStep3")}</div>
+              <div className="rounded-lg border border-border/70 bg-background px-3 py-2">4. {t("home.setup.flowStep4")}</div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {activeTab === "dashboard" ? (
         <div className="space-y-3">
@@ -999,7 +1071,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "credentials" ? (
+      {activeTab === "credentials" || activeTab === "setup" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1081,6 +1153,14 @@ export default function HomePage() {
                       >
                         {t("home.credentials.rotate")}
                       </Button>
+                      <Button
+                        className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive/10"
+                        variant="outline"
+                        onClick={() => void handleRevokeCredential(cred.credential_id)}
+                        disabled={cred.lifecycle_state === "revoked"}
+                      >
+                        {t("home.credentials.revoke")}
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1090,7 +1170,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "auth-settings" ? (
+      {activeTab === "auth-settings" || activeTab === "setup" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1150,7 +1230,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "api-key-management" ? (
+      {activeTab === "api-key-management" || activeTab === "setup" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2603,8 +2683,8 @@ export default function HomePage() {
                     {t("home.secretAudit.rotateConfirmLabel")}
                   </label>
                   <Button
-                    className="h-9 px-4 text-sm"
-                    variant="destructive"
+                    className="h-9 px-4 text-sm border-destructive text-destructive hover:bg-destructive/10"
+                    variant="outline"
                     disabled={!credRotateId || !credRotateNewProfile || !credRotateConfirmed || credRotateInProgress}
                     onClick={async () => {
                       setCredRotateInProgress(true);
@@ -2642,7 +2722,6 @@ export default function HomePage() {
             </div>
             <Button
               variant="ghost"
-              size="icon"
               className="h-8 w-8 shrink-0 text-muted-foreground"
               onClick={() => setIsRelayHelpOpen(true)}
               title={t("home.relayManagement.helpTitle")}
@@ -2698,7 +2777,7 @@ export default function HomePage() {
                     <h3 className="text-sm font-semibold">{t("home.relayManagement.relayListTitle")}</h3>
                     <Button
                       variant="outline"
-                      size="sm"
+                      className="h-8 px-3 text-xs"
                       disabled={relayLoading}
                       onClick={async () => {
                         setRelayLoading(true);
@@ -2754,7 +2833,7 @@ export default function HomePage() {
                               <td className="px-3 py-2">
                                 <div className="flex gap-1">
                                   {r.status === "disabled" ? (
-                                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                    <Button variant="outline" className="h-6 px-2 text-xs"
                                       onClick={async () => {
                                         try {
                                           const updated = await enableRelay(relayAdminKey, r.relay_id);
@@ -2764,7 +2843,7 @@ export default function HomePage() {
                                       }}
                                     >{t("home.relayManagement.enableButton")}</Button>
                                   ) : (
-                                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                    <Button variant="outline" className="h-6 px-2 text-xs"
                                       onClick={async () => {
                                         try {
                                           const updated = await disableRelay(relayAdminKey, r.relay_id);
@@ -2774,7 +2853,7 @@ export default function HomePage() {
                                       }}
                                     >{t("home.relayManagement.disableButton")}</Button>
                                   )}
-                                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                  <Button variant="outline" className="h-6 px-2 text-xs"
                                     disabled={rotInProgress && rotRelayId === r.relay_id}
                                     onClick={async () => {
                                       setRotRelayId(r.relay_id);
@@ -2960,7 +3039,6 @@ export default function HomePage() {
                         <p className="break-all font-mono text-xs">{bsLastToken}</p>
                         <Button
                           variant="outline"
-                          size="sm"
                           className="h-7 px-3 text-xs"
                           onClick={() => {
                             navigator.clipboard.writeText(bsLastToken!);
@@ -3026,7 +3104,6 @@ export default function HomePage() {
                                 <td className="px-3 py-2">
                                   {!isRevoked && !isUsed && (
                                     <Button
-                                      size="sm"
                                       variant="outline"
                                       className="h-6 px-2 text-xs"
                                       onClick={async () => {

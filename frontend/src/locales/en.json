@@ -24,6 +24,7 @@
       "primaryAction": "Start Operator Mode"
     },
     "tabs": {
+      "setup": "Setup",
       "dashboard": "Dashboard",
       "integrations": "Integrations",
       "deliveries": "Webhook Deliveries",
@@ -36,6 +37,20 @@
       "event-config": "Event Config",
       "secret-rotation": "Secret Rotation & Audit",
       "relay-management": "Relay Management"
+    },
+    "setup": {
+      "title": "Single-Site Setup",
+      "description": "Keep one active Wix site and one event in focus, then finish credential configuration in one place.",
+      "activeSite": "Active site",
+      "activeEvent": "Active event",
+      "notBound": "Not bound yet",
+      "singleContextHint": "This view is optimized for one site/event context so operators do not need to switch across multiple admin tabs.",
+      "flowTitle": "Recommended setup flow",
+      "flowDescription": "Follow this sequence for a clean and predictable go-live.",
+      "flowStep1": "Create or refresh your site-event binding.",
+      "flowStep2": "Create and validate the credential profile.",
+      "flowStep3": "Confirm auth token health or test OAuth connectivity.",
+      "flowStep4": "Test and save your Wix API key configuration."
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",

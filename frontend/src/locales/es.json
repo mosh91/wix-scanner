@@ -24,6 +24,7 @@
       "primaryAction": "Iniciar modo operador"
     },
     "tabs": {
+      "setup": "Configuracion",
       "dashboard": "Dashboard",
       "integrations": "Integraciones",
       "deliveries": "Entregas de Webhooks",
@@ -36,6 +37,20 @@
       "event-config": "Config. de Eventos",
       "secret-rotation": "Rotacion y Auditoria",
       "relay-management": "Gestion de Relays"
+    },
+    "setup": {
+      "title": "Configuracion de un solo sitio",
+      "description": "Mantenga un sitio Wix y un evento activos, y complete la configuracion de credenciales en una sola vista.",
+      "activeSite": "Sitio activo",
+      "activeEvent": "Evento activo",
+      "notBound": "Sin vinculacion",
+      "singleContextHint": "Esta vista esta optimizada para un solo contexto sitio/evento, para que el operador no tenga que cambiar entre multiples tabs.",
+      "flowTitle": "Flujo recomendado",
+      "flowDescription": "Siga esta secuencia para una salida a produccion limpia y predecible.",
+      "flowStep1": "Cree o actualice el binding de sitio-evento.",
+      "flowStep2": "Cree y valide el perfil de credenciales.",
+      "flowStep3": "Confirme la salud del token auth o pruebe conectividad OAuth.",
+      "flowStep4": "Pruebe y guarde la configuracion de clave API de Wix."
     },
     "metrics": {
       "verifiedBindings": "Bindings verificados",

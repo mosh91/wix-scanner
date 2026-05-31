@@ -17,8 +17,6 @@ router = APIRouter(prefix="/admin")
 class SiteEventBindingCreateRequest(BaseModel):
     wix_site_id: str = Field(min_length=3, max_length=128)
     wix_event_id: str = Field(min_length=3, max_length=128)
-    credential_profile_id: str | None = Field(default=None, max_length=128)
-    sync_policy_profile_id: str | None = Field(default=None, max_length=128)
     actor: str = Field(default="system", min_length=2, max_length=128)
     verify_immediately: bool = True
 
@@ -29,13 +27,10 @@ class SiteEventBindingResponse(BaseModel):
     wix_event_id: str
     status: BindingStatus
     app_installation_status: AppInstallationStatus
-    credential_profile_id: str | None
-    sync_policy_profile_id: str | None
-    binding_created_at: str
     binding_verified_at: str | None
-    verified_by_actor: str | None
     last_verification_error: str | None
-    verification_evidence: dict[str, object]
+    created_at: str
+    updated_at: str
 
 
 class SiteEventBindingVerifyRequest(BaseModel):
@@ -70,13 +65,10 @@ def _to_binding_response(record: WixSiteEventBindingRecord) -> SiteEventBindingR
         wix_event_id=record.wix_event_id,
         status=record.status,
         app_installation_status=record.app_installation_status,
-        credential_profile_id=record.credential_profile_id,
-        sync_policy_profile_id=record.sync_policy_profile_id,
-        binding_created_at=record.binding_created_at,
         binding_verified_at=record.binding_verified_at,
-        verified_by_actor=record.verified_by_actor,
         last_verification_error=record.last_verification_error,
-        verification_evidence=record.verification_evidence,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
     )
 
 
@@ -92,8 +84,6 @@ def create_site_event_binding(request: SiteEventBindingCreateRequest) -> SiteEve
         record = service.create_binding(
             wix_site_id=request.wix_site_id,
             wix_event_id=request.wix_event_id,
-            credential_profile_id=request.credential_profile_id,
-            sync_policy_profile_id=request.sync_policy_profile_id,
             created_by_actor=request.actor,
             verify_immediately=request.verify_immediately,
         )

@@ -40,10 +40,9 @@ class EventResponse(BaseModel):
     timezone: str
     status: EventStatus
     allow_block_overlap: bool
-    version: int
+    sync_enabled: bool
     created_at: str
     updated_at: str
-    actor: str
 
 
 class CreateBlockRequest(BaseModel):
@@ -79,10 +78,8 @@ class BlockResponse(BaseModel):
     allow_overlap: bool
     priority: int
     is_active: bool
-    version: int
     created_at: str
     updated_at: str
-    actor: str
 
 
 class ConfigVersionResponse(BaseModel):
@@ -91,7 +88,7 @@ class ConfigVersionResponse(BaseModel):
     version_number: int
     config_snapshot: dict
     created_at: str
-    actor: str
+    created_by: str | None
 
 
 # ── Converters ────────────────────────────────────────────────────────────────
@@ -105,10 +102,9 @@ def _event_to_response(r: EventRecord) -> EventResponse:
         timezone=r.timezone,
         status=r.status,
         allow_block_overlap=r.allow_block_overlap,
-        version=r.version,
+        sync_enabled=r.sync_enabled,
         created_at=r.created_at,
         updated_at=r.updated_at,
-        actor=r.actor,
     )
 
 
@@ -124,10 +120,8 @@ def _block_to_response(r: EventBlockRecord) -> BlockResponse:
         allow_overlap=r.allow_overlap,
         priority=r.priority,
         is_active=r.is_active,
-        version=r.version,
         created_at=r.created_at,
         updated_at=r.updated_at,
-        actor=r.actor,
     )
 
 
@@ -279,7 +273,7 @@ def list_config_versions(event_id: str) -> list[ConfigVersionResponse]:
             version_number=v.version_number,
             config_snapshot=v.config_snapshot,
             created_at=v.created_at,
-            actor=v.actor,
+            created_by=v.created_by,
         )
         for v in versions
     ]

@@ -33,21 +33,20 @@ def set_event_block_config_service(service: EventBlockConfigService) -> None:
 
 @dataclass(frozen=True)
 class EventRecord:
-    event_id: str
+    event_id: str  # Maps to id column in database
     wix_event_id: str
     name: str
     timezone: str
     status: EventStatus
     allow_block_overlap: bool
-    version: int
+    sync_enabled: bool
     created_at: str
     updated_at: str
-    actor: str
 
 
 @dataclass(frozen=True)
 class EventBlockRecord:
-    block_id: str
+    block_id: str  # Maps to id column in database
     event_id: str
     block_code: str
     name: str
@@ -57,20 +56,18 @@ class EventBlockRecord:
     allow_overlap: bool
     priority: int
     is_active: bool
-    version: int
     created_at: str
     updated_at: str
-    actor: str
 
 
 @dataclass(frozen=True)
 class ConfigVersionRecord:
-    version_id: str
+    version_id: str  # Maps to id column in database
     event_id: str
     version_number: int
     config_snapshot: dict
     created_at: str
-    actor: str
+    created_by: str | None
 
 
 # ── Validation helpers ────────────────────────────────────────────────────────
@@ -111,17 +108,18 @@ class _Base(DeclarativeBase):
 
 
 class _EventConfigRow(_Base):
-    __tablename__ = "event_config"
-    __table_args__ = (UniqueConstraint("event_id"), UniqueConstraint("wix_event_id"))
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    event_id = Column(String, nullable=False, unique=True)
+    __tablename__ = "event"
+    __table_args__ = (UniqueConstraint("wix_event_id"),)
+    id = Column(String, primary_key=True)  # UUID
     wix_event_id = Column(String, nullable=False, unique=True)
     name = Column(String, nullable=False)
     timezone = Column(String, nullable=False, default="UTC")
     status = Column(String, nullable=False, default="draft")
-    allow_block_overlap = Column(Integer, nullable=False, default=0)
-    version = Column(Integer, nullable=False, default=1)
-    actor = Column(String, nullable=False, default="system")
+    allow_block_overlap = Column(Boolean, nullable=False, default=False)
+    sync_enabled = Column(Boolean, nullable=False, default=True)
+    sync_interval_seconds = Column(Integer, nullable=False, default=120)
+    created_by = Column(String, nullable=True)  # UUID
+    updated_by = Column(String, nullable=True)  # UUID
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
@@ -129,19 +127,18 @@ class _EventConfigRow(_Base):
 class _EventBlockRow(_Base):
     __tablename__ = "event_block"
     __table_args__ = (UniqueConstraint("event_id", "block_code", name="event_block_unique_code"),)
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    block_id = Column(String, nullable=False, unique=True)
-    event_id = Column(String, nullable=False)
+    id = Column(String, primary_key=True)  # UUID
+    event_id = Column(String, nullable=False)  # UUID
     block_code = Column(String, nullable=False)
     name = Column(String, nullable=False)
     starts_at = Column(String, nullable=False)
     ends_at = Column(String, nullable=False)
     grace_period_minutes = Column(Integer, nullable=False, default=0)
-    allow_overlap = Column(Integer, nullable=False, default=0)
+    allow_overlap = Column(Boolean, nullable=False, default=False)
     priority = Column(Integer, nullable=False, default=100)
-    is_active = Column(Integer, nullable=False, default=1)
-    version = Column(Integer, nullable=False, default=1)
-    actor = Column(String, nullable=False, default="system")
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_by = Column(String, nullable=True)  # UUID
+    updated_by = Column(String, nullable=True)  # UUID
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
@@ -149,12 +146,11 @@ class _EventBlockRow(_Base):
 class _EventConfigVersionRow(_Base):
     __tablename__ = "event_config_version"
     __table_args__ = (UniqueConstraint("event_id", "version_number", name="event_config_version_unique"),)
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    version_id = Column(String, nullable=False, unique=True)
-    event_id = Column(String, nullable=False)
+    id = Column(String, primary_key=True)  # UUID
+    event_id = Column(String, nullable=False)  # UUID
     version_number = Column(Integer, nullable=False)
-    config_snapshot = Column(Text, nullable=False)
-    actor = Column(String, nullable=False, default="system")
+    config_snapshot = Column(Text, nullable=False)  # JSONB
+    created_by = Column(String, nullable=True)  # UUID
     created_at = Column(String, nullable=False)
 
 
@@ -185,36 +181,41 @@ class EventBlockConfigService:
     def _now() -> str:
         return datetime.now(UTC).isoformat()
 
+    @staticmethod
+    def _to_str(v) -> str | None:
+        if v is None:
+            return None
+        if hasattr(v, "isoformat"):
+            return v.isoformat()
+        return str(v)
+
     def _row_to_event(self, row: _EventConfigRow) -> EventRecord:
         return EventRecord(
-            event_id=row.event_id,
+            event_id=str(row.id),  # Map database id to event_id
             wix_event_id=row.wix_event_id,
             name=row.name,
             timezone=row.timezone,
             status=row.status,
             allow_block_overlap=bool(row.allow_block_overlap),
-            version=row.version,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            actor=row.actor,
+            sync_enabled=bool(row.sync_enabled),
+            created_at=self._to_str(row.created_at),
+            updated_at=self._to_str(row.updated_at),
         )
 
     def _row_to_block(self, row: _EventBlockRow) -> EventBlockRecord:
         return EventBlockRecord(
-            block_id=row.block_id,
-            event_id=row.event_id,
+            block_id=str(row.id),  # Map database id to block_id
+            event_id=str(row.event_id),
             block_code=row.block_code,
             name=row.name,
-            starts_at=row.starts_at,
-            ends_at=row.ends_at,
+            starts_at=self._to_str(row.starts_at),
+            ends_at=self._to_str(row.ends_at),
             grace_period_minutes=row.grace_period_minutes,
             allow_overlap=bool(row.allow_overlap),
             priority=row.priority,
             is_active=bool(row.is_active),
-            version=row.version,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            actor=row.actor,
+            created_at=self._to_str(row.created_at),
+            updated_at=self._to_str(row.updated_at),
         )
 
     def _snapshot_event(self, session, event_id: str, version: int, actor: str) -> None:
@@ -223,18 +224,22 @@ class EventBlockConfigService:
             select(_EventBlockRow).where(_EventBlockRow.event_id == event_id)
         ).scalars().all()
         event_row = session.execute(
-            select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+            select(_EventConfigRow).where(_EventConfigRow.id == event_id)
         ).scalar_one_or_none()
+
+        def _to_str(v):
+            return str(v) if v is not None else None
+
         snapshot = {
-            "event": {c.name: getattr(event_row, c.name) for c in _EventConfigRow.__table__.columns} if event_row else {},
-            "blocks": [{c.name: getattr(b, c.name) for c in _EventBlockRow.__table__.columns} for b in blocks],
+            "event": {c.name: _to_str(getattr(event_row, c.name)) for c in _EventConfigRow.__table__.columns} if event_row else {},
+            "blocks": [{c.name: _to_str(getattr(b, c.name)) for c in _EventBlockRow.__table__.columns} for b in blocks],
         }
         session.add(_EventConfigVersionRow(
-            version_id=str(uuid4()),
+            id=str(uuid4()),
             event_id=event_id,
             version_number=version,
             config_snapshot=json.dumps(snapshot),
-            actor=actor,
+            created_by=None,  # Actor string is not a UUID
             created_at=self._now(),
         ))
 
@@ -258,7 +263,7 @@ class EventBlockConfigService:
         new_start = datetime.fromisoformat(starts_at)
         new_end = datetime.fromisoformat(ends_at)
         for row in rows:
-            if exclude_block_id and row.block_id == exclude_block_id:
+            if exclude_block_id and row.id == exclude_block_id:
                 continue
             existing_start = datetime.fromisoformat(row.starts_at)
             existing_end = datetime.fromisoformat(row.ends_at)
@@ -282,14 +287,12 @@ class EventBlockConfigService:
         now = self._now()
         with self._session_factory() as session:
             row = _EventConfigRow(
-                event_id=event_id,
+                id=event_id,
                 wix_event_id=wix_event_id,
                 name=name,
                 timezone=timezone,
                 status="draft",
-                allow_block_overlap=int(allow_block_overlap),
-                version=1,
-                actor=actor,
+                allow_block_overlap=allow_block_overlap,
                 created_at=now,
                 updated_at=now,
             )
@@ -298,7 +301,7 @@ class EventBlockConfigService:
             self._snapshot_event(session, event_id, 1, actor)
             session.commit()
             result = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one()
             return self._row_to_event(result)
 
@@ -306,7 +309,7 @@ class EventBlockConfigService:
         from sqlalchemy import select
         with self._session_factory() as session:
             row = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one_or_none()
         return self._row_to_event(row) if row else None
 
@@ -331,12 +334,11 @@ class EventBlockConfigService:
         from sqlalchemy import select
         with self._session_factory() as session:
             row = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one_or_none()
             if not row:
                 raise KeyError(f"Event {event_id!r} not found.")
             now = self._now()
-            new_version = row.version + 1
             if name is not None:
                 row.name = name
             if timezone is not None:
@@ -344,21 +346,19 @@ class EventBlockConfigService:
             if status is not None:
                 row.status = status
             if allow_block_overlap is not None:
-                row.allow_block_overlap = int(allow_block_overlap)
-            row.version = new_version
-            row.actor = actor
+                row.allow_block_overlap = allow_block_overlap
+            row.updated_by = None  # No real user UUID
             row.updated_at = now
-            self._snapshot_event(session, event_id, new_version, actor)
             session.commit()
             updated = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one()
             return self._row_to_event(updated)
 
     def delete_event(self, event_id: str) -> None:
         from sqlalchemy import select, delete
         with self._session_factory() as session:
-            session.execute(delete(_EventConfigRow).where(_EventConfigRow.event_id == event_id))
+            session.execute(delete(_EventConfigRow).where(_EventConfigRow.id == event_id))
             session.commit()
 
     # ── Block CRUD ───────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ class EventBlockConfigService:
 
         with self._session_factory() as session:
             event_row = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one_or_none()
             if not event_row:
                 raise KeyError(f"Event {event_id!r} not found.")
@@ -398,31 +398,23 @@ class EventBlockConfigService:
                     )
 
             block_row = _EventBlockRow(
-                block_id=block_id,
+                id=block_id,  # Use block_id as the id field
                 event_id=event_id,
                 block_code=block_code,
                 name=name,
                 starts_at=starts_at,
                 ends_at=ends_at,
                 grace_period_minutes=grace_period_minutes,
-                allow_overlap=int(allow_overlap),
+                allow_overlap=allow_overlap,
                 priority=priority,
-                is_active=1,
-                version=1,
-                actor=actor,
+                is_active=True,
                 created_at=now,
                 updated_at=now,
             )
             session.add(block_row)
-            new_event_version = event_row.version + 1
-            event_row.version = new_event_version
-            event_row.actor = actor
-            event_row.updated_at = now
-            session.flush()
-            self._snapshot_event(session, event_id, new_event_version, actor)
             session.commit()
             result = session.execute(
-                select(_EventBlockRow).where(_EventBlockRow.block_id == block_id)
+                select(_EventBlockRow).where(_EventBlockRow.id == block_id)
             ).scalar_one()
             return self._row_to_block(result)
 
@@ -430,7 +422,7 @@ class EventBlockConfigService:
         from sqlalchemy import select
         with self._session_factory() as session:
             row = session.execute(
-                select(_EventBlockRow).where(_EventBlockRow.block_id == block_id)
+                select(_EventBlockRow).where(_EventBlockRow.id == block_id)
             ).scalar_one_or_none()
         return self._row_to_block(row) if row else None
 
@@ -460,7 +452,7 @@ class EventBlockConfigService:
         from sqlalchemy import select
         with self._session_factory() as session:
             block_row = session.execute(
-                select(_EventBlockRow).where(_EventBlockRow.block_id == block_id)
+                select(_EventBlockRow).where(_EventBlockRow.id == block_id)
             ).scalar_one_or_none()
             if not block_row:
                 raise KeyError(f"Block {block_id!r} not found.")
@@ -475,7 +467,7 @@ class EventBlockConfigService:
                 _validate_priority(priority)
 
             event_row = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == block_row.event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == block_row.event_id)
             ).scalar_one_or_none()
 
             eff_allow_overlap = allow_overlap if allow_overlap is not None else bool(block_row.allow_overlap)
@@ -486,7 +478,6 @@ class EventBlockConfigService:
                     )
 
             now = self._now()
-            new_version = block_row.version + 1
             if name is not None:
                 block_row.name = name
             if starts_at is not None:
@@ -496,25 +487,17 @@ class EventBlockConfigService:
             if grace_period_minutes is not None:
                 block_row.grace_period_minutes = grace_period_minutes
             if allow_overlap is not None:
-                block_row.allow_overlap = int(allow_overlap)
+                block_row.allow_overlap = allow_overlap
             if priority is not None:
                 block_row.priority = priority
             if is_active is not None:
-                block_row.is_active = int(is_active)
-            block_row.version = new_version
-            block_row.actor = actor
+                block_row.is_active = is_active
             block_row.updated_at = now
-
-            if event_row:
-                new_event_version = event_row.version + 1
-                event_row.version = new_event_version
-                event_row.actor = actor
-                event_row.updated_at = now
-                self._snapshot_event(session, block_row.event_id, new_event_version, actor)
+            block_row.updated_by = actor
 
             session.commit()
             updated = session.execute(
-                select(_EventBlockRow).where(_EventBlockRow.block_id == block_id)
+                select(_EventBlockRow).where(_EventBlockRow.id == block_id)
             ).scalar_one()
             return self._row_to_block(updated)
 
@@ -527,17 +510,13 @@ class EventBlockConfigService:
             if not block_row:
                 raise KeyError(f"Block {block_id!r} not found.")
             event_id = block_row.event_id
-            session.execute(delete(_EventBlockRow).where(_EventBlockRow.block_id == block_id))
+            session.execute(delete(_EventBlockRow).where(_EventBlockRow.id == block_id))
             event_row = session.execute(
-                select(_EventConfigRow).where(_EventConfigRow.event_id == event_id)
+                select(_EventConfigRow).where(_EventConfigRow.id == event_id)
             ).scalar_one_or_none()
             if event_row:
                 now = self._now()
-                new_event_version = event_row.version + 1
-                event_row.version = new_event_version
-                event_row.actor = actor
                 event_row.updated_at = now
-                self._snapshot_event(session, event_id, new_event_version, actor)
             session.commit()
 
     # ── Block selection ───────────────────────────────────────────────────────
@@ -555,7 +534,7 @@ class EventBlockConfigService:
             ).scalar_one_or_none()
             if not event_row:
                 return None
-            event_id = event_row.event_id
+            event_id = event_row.id  # Use id as event_id
             rows = session.execute(
                 select(_EventBlockRow)
                 .where(_EventBlockRow.event_id == event_id)
@@ -587,12 +566,12 @@ class EventBlockConfigService:
             ).scalars().all()
         return [
             ConfigVersionRecord(
-                version_id=r.version_id,
+                version_id=r.id,  # Map id to version_id
                 event_id=r.event_id,
                 version_number=r.version_number,
                 config_snapshot=json.loads(r.config_snapshot),
                 created_at=r.created_at,
-                actor=r.actor,
+                created_by=r.created_by,
             )
             for r in rows
         ]

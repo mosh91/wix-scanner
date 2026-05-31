@@ -65,13 +65,10 @@ class WixSiteEventBindingRecord:
     wix_event_id: str
     status: BindingStatus
     app_installation_status: AppInstallationStatus
-    credential_profile_id: str | None
-    sync_policy_profile_id: str | None
-    binding_created_at: str
     binding_verified_at: str | None
-    verified_by_actor: str | None
     last_verification_error: str | None
-    verification_evidence: dict[str, object]
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True)
@@ -97,20 +94,19 @@ class _Base(DeclarativeBase):
 
 class _BindingRow(_Base):
     __tablename__ = "wix_site_event_binding"
-    __table_args__ = (UniqueConstraint("wix_site_id", "wix_event_id"),)
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    binding_id = Column(String, nullable=False, unique=True)
+    id = Column(String, primary_key=True)  # UUID from database
+    event_id = Column(String, nullable=False)  # UUID reference to event table
     wix_site_id = Column(String, nullable=False)
     wix_event_id = Column(String, nullable=False)
+    binding_id = Column(String, nullable=True)
     status = Column(String, nullable=False)
     app_installation_status = Column(String, nullable=False)
-    credential_profile_id = Column(String, nullable=True)
-    sync_policy_profile_id = Column(String, nullable=True)
-    binding_created_at = Column(String, nullable=False)
     binding_verified_at = Column(String, nullable=True)
-    verified_by_actor = Column(String, nullable=True)
+    scopes_verified_at = Column(String, nullable=True)
     last_verification_error = Column(Text, nullable=True)
-    verification_evidence = Column(Text, nullable=False, default="{}")
+    binding_metadata = Column("metadata", Text, nullable=False, default="{}")
+    created_by = Column(String, nullable=True)  # UUID
+    updated_by = Column(String, nullable=True)  # UUID
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
@@ -143,20 +139,25 @@ class SiteEventBindingService:
     def _now(self) -> str:
         return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
+    @staticmethod
+    def _to_str(v) -> str | None:
+        if v is None:
+            return None
+        if hasattr(v, "isoformat"):
+            return v.isoformat()
+        return str(v)
+
     def _row_to_record(self, row: _BindingRow) -> WixSiteEventBindingRecord:
         return WixSiteEventBindingRecord(
-            binding_id=row.binding_id,
+            binding_id=str(row.binding_id or row.id),
             wix_site_id=row.wix_site_id,
             wix_event_id=row.wix_event_id,
             status=row.status,
             app_installation_status=row.app_installation_status,
-            credential_profile_id=row.credential_profile_id,
-            sync_policy_profile_id=row.sync_policy_profile_id,
-            binding_created_at=row.binding_created_at,
-            binding_verified_at=row.binding_verified_at,
-            verified_by_actor=row.verified_by_actor,
+            binding_verified_at=self._to_str(row.binding_verified_at),
             last_verification_error=row.last_verification_error,
-            verification_evidence=json.loads(row.verification_evidence or "{}"),
+            created_at=self._to_str(row.created_at),
+            updated_at=self._to_str(row.updated_at),
         )
 
     def create_binding(
@@ -165,22 +166,28 @@ class SiteEventBindingService:
         wix_site_id: str,
         wix_event_id: str,
         created_by_actor: str,
-        credential_profile_id: str | None = None,
-        sync_policy_profile_id: str | None = None,
         verify_immediately: bool = True,
     ) -> WixSiteEventBindingRecord:
+        from sqlalchemy import select, text
         binding_id = str(uuid4())
         now = self._now()
         with self._session_factory() as session:
+            # Look up the event by wix_event_id to get the real FK
+            event_row = session.execute(
+                text("SELECT id FROM event WHERE wix_event_id = :wix_event_id"),
+                {"wix_event_id": wix_event_id},
+            ).fetchone()
+            if event_row is None:
+                raise ValueError(f"Event with wix_event_id={wix_event_id!r} not found. Create the event first.")
+            event_id = str(event_row[0])
             session.add(_BindingRow(
+                id=binding_id,
+                event_id=event_id,
                 binding_id=binding_id,
                 wix_site_id=wix_site_id,
                 wix_event_id=wix_event_id,
                 status="pending",
                 app_installation_status="pending_install",
-                credential_profile_id=credential_profile_id,
-                sync_policy_profile_id=sync_policy_profile_id,
-                binding_created_at=now,
                 created_at=now,
                 updated_at=now,
             ))
