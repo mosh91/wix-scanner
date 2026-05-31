@@ -29,7 +29,8 @@
       "deliveries": "Entregas de Webhooks",
       "credentials": "Credenciales",
       "readiness": "Preparacion",
-      "reconciliation": "Reconciliacion"
+      "reconciliation": "Reconciliacion",
+      "event-config": "Config. de Eventos"
     },
     "metrics": {
       "verifiedBindings": "Bindings verificados",
@@ -210,6 +211,25 @@
         "backend": "Conectividad del backend",
         "worker": "Salud de workers"
       }
+    },
+    "eventConfig": {
+      "title": "Configuración de Bloques de Evento",
+      "description": "Crea y gestiona ventanas de escaneo (bloques) para tus eventos de Wix.",
+      "createEvent": "Crear Evento",
+      "wixEventIdPlaceholder": "ID de evento Wix",
+      "eventNamePlaceholder": "Nombre del evento",
+      "addEvent": "Agregar Evento",
+      "refresh": "Actualizar",
+      "loading": "Cargando…",
+      "empty": "Aún no hay eventos configurados.",
+      "viewBlocks": "Bloques",
+      "deleteEvent": "Eliminar",
+      "blocks": "Bloques",
+      "noBlocks": "Sin bloques aún.",
+      "blockCodePlaceholder": "Código de bloque",
+      "blockNamePlaceholder": "Nombre de bloque",
+      "addBlock": "Agregar Bloque",
+      "deleteBlock": "Eliminar"
     },
     "reconciliation": {
       "title": "Reconciliacion",

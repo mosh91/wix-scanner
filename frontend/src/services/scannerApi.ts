@@ -635,3 +635,120 @@ export async function validateAuthModeConsistency(): Promise<{ ok: boolean; erro
   return { ok: true };
 }
 
+// ── Event Block Config ────────────────────────────────────────────────────────
+
+export type EventStatus = "draft" | "active" | "archived";
+
+export type EventRecord = {
+  event_id: string;
+  wix_event_id: string;
+  name: string;
+  timezone: string;
+  status: EventStatus;
+  allow_block_overlap: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  actor: string;
+};
+
+export type EventBlockRecord = {
+  block_id: string;
+  event_id: string;
+  block_code: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  grace_period_minutes: number;
+  allow_overlap: boolean;
+  priority: number;
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  actor: string;
+};
+
+export type CreateEventRequest = {
+  wix_event_id: string;
+  name: string;
+  timezone?: string;
+  allow_block_overlap?: boolean;
+  actor?: string;
+};
+
+export type CreateBlockRequest = {
+  block_code: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  grace_period_minutes?: number;
+  allow_overlap?: boolean;
+  priority?: number;
+  actor?: string;
+};
+
+export type UpdateBlockRequest = {
+  name?: string;
+  starts_at?: string;
+  ends_at?: string;
+  grace_period_minutes?: number;
+  allow_overlap?: boolean;
+  priority?: number;
+  is_active?: boolean;
+  actor?: string;
+};
+
+export async function createEvent(req: CreateEventRequest): Promise<EventRecord> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) throw new Error(`Create event failed: ${response.status}`);
+  return (await response.json()) as EventRecord;
+}
+
+export async function listEvents(): Promise<EventRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/events`);
+  if (!response.ok) throw new Error(`List events failed: ${response.status}`);
+  return (await response.json()) as EventRecord[];
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/events/${eventId}`, {
+    method: "DELETE",
+  });
+  if (response.status !== 204 && !response.ok) {
+    throw new Error(`Delete event failed: ${response.status}`);
+  }
+}
+
+export async function createBlock(eventId: string, req: CreateBlockRequest): Promise<EventBlockRecord> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/events/${eventId}/blocks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Create block failed: ${response.status}`);
+  }
+  return (await response.json()) as EventBlockRecord;
+}
+
+export async function listBlocks(eventId: string): Promise<EventBlockRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/events/${eventId}/blocks`);
+  if (!response.ok) throw new Error(`List blocks failed: ${response.status}`);
+  return (await response.json()) as EventBlockRecord[];
+}
+
+export async function deleteBlock(blockId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/admin/event-blocks/blocks/${blockId}`, {
+    method: "DELETE",
+  });
+  if (response.status !== 204 && !response.ok) {
+    throw new Error(`Delete block failed: ${response.status}`);
+  }
+}
+

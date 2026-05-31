@@ -10,9 +10,15 @@ import {
   activateCredential,
   activateEvent,
   createCredential,
+  createEvent,
+  createBlock,
   createSiteEventBinding,
+  deleteEvent,
+  deleteBlock,
   fetchWebhookHistory,
   getEventReadiness,
+  listBlocks,
+  listEvents,
   listReconciliationConflicts,
   listReconciliationRuns,
   listCredentials,
@@ -30,6 +36,8 @@ import {
   verifySiteEventBinding,
   type AuthMode,
   type CredentialLifecycleRecord,
+  type EventRecord,
+  type EventBlockRecord,
   type SiteEventBindingRecord,
   type ReconciliationItemRecord,
   type ReconciliationRunRecord,
@@ -38,7 +46,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness" | "reconciliation";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "readiness" | "reconciliation" | "event-config";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -89,6 +97,104 @@ export default function HomePage() {
   const [reconciliationConflicts, setReconciliationConflicts] = useState<ReconciliationItemRecord[]>([]);
   const [loadingReconciliation, setLoadingReconciliation] = useState(false);
   const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
+
+  // Event block config state
+  const [eventConfigList, setEventConfigList] = useState<EventRecord[]>([]);
+  const [loadingEventConfig, setLoadingEventConfig] = useState(false);
+  const [selectedEventForBlocks, setSelectedEventForBlocks] = useState<string | null>(null);
+  const [blockList, setBlockList] = useState<EventBlockRecord[]>([]);
+  const [loadingBlocks, setLoadingBlocks] = useState(false);
+  const [newEventWixId, setNewEventWixId] = useState("");
+  const [newEventName, setNewEventName] = useState("");
+  const [newBlockCode, setNewBlockCode] = useState("");
+  const [newBlockName, setNewBlockName] = useState("");
+  const [newBlockStartsAt, setNewBlockStartsAt] = useState("");
+  const [newBlockEndsAt, setNewBlockEndsAt] = useState("");
+  const [eventConfigError, setEventConfigError] = useState<string | null>(null);
+
+  const loadEventConfig = useCallback(async () => {
+    setLoadingEventConfig(true);
+    try {
+      const events = await listEvents();
+      setEventConfigList(events);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load events");
+    } finally {
+      setLoadingEventConfig(false);
+    }
+  }, []);
+
+  const loadBlocks = useCallback(async (eventId: string) => {
+    setLoadingBlocks(true);
+    try {
+      const blocks = await listBlocks(eventId);
+      setBlockList(blocks);
+    } catch {
+      setBlockList([]);
+    } finally {
+      setLoadingBlocks(false);
+    }
+  }, []);
+
+  const handleCreateEvent = useCallback(async () => {
+    if (!newEventWixId.trim() || !newEventName.trim()) return;
+    setEventConfigError(null);
+    try {
+      await createEvent({ wix_event_id: newEventWixId.trim(), name: newEventName.trim(), actor: "operator-ui" });
+      setNewEventWixId("");
+      setNewEventName("");
+      await loadEventConfig();
+      toast.success("Event created");
+    } catch (err) {
+      setEventConfigError(err instanceof Error ? err.message : "Failed to create event");
+    }
+  }, [newEventWixId, newEventName, loadEventConfig]);
+
+  const handleDeleteEvent = useCallback(async (eventId: string) => {
+    try {
+      await deleteEvent(eventId);
+      setEventConfigList((prev) => prev.filter((e) => e.event_id !== eventId));
+      if (selectedEventForBlocks === eventId) {
+        setSelectedEventForBlocks(null);
+        setBlockList([]);
+      }
+      toast.success("Event deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete event");
+    }
+  }, [selectedEventForBlocks]);
+
+  const handleAddBlock = useCallback(async () => {
+    if (!selectedEventForBlocks || !newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt) return;
+    setEventConfigError(null);
+    try {
+      await createBlock(selectedEventForBlocks, {
+        block_code: newBlockCode.trim(),
+        name: newBlockName.trim() || newBlockCode.trim(),
+        starts_at: newBlockStartsAt,
+        ends_at: newBlockEndsAt,
+        actor: "operator-ui",
+      });
+      setNewBlockCode("");
+      setNewBlockName("");
+      setNewBlockStartsAt("");
+      setNewBlockEndsAt("");
+      await loadBlocks(selectedEventForBlocks);
+      toast.success("Block added");
+    } catch (err) {
+      setEventConfigError(err instanceof Error ? err.message : "Failed to create block");
+    }
+  }, [selectedEventForBlocks, newBlockCode, newBlockName, newBlockStartsAt, newBlockEndsAt, loadBlocks]);
+
+  const handleDeleteBlock = useCallback(async (blockId: string) => {
+    try {
+      await deleteBlock(blockId);
+      setBlockList((prev) => prev.filter((b) => b.block_id !== blockId));
+      toast.success("Block deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete block");
+    }
+  }, []);
 
   const dashboardStats = useMemo(() => {
     const verifiedBindings = bindings.filter((item) => item.status === "verified").length;
@@ -405,7 +511,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["dashboard", "integrations", "deliveries", "credentials", "readiness", "reconciliation"] as HomeTab[]).map((tab) => (
+        {(["dashboard", "integrations", "deliveries", "credentials", "readiness", "reconciliation", "event-config"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -1004,6 +1110,154 @@ export default function HomePage() {
         </div>
       ) : null}
 
+      {activeTab === "event-config" ? (
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle>{t("home.eventConfig.title")}</CardTitle>
+            <CardDescription>{t("home.eventConfig.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {eventConfigError ? (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {eventConfigError}
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">{t("home.eventConfig.createEvent")}</div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+                  placeholder={t("home.eventConfig.wixEventIdPlaceholder")}
+                  value={newEventWixId}
+                  onChange={(e) => setNewEventWixId(e.target.value)}
+                />
+                <input
+                  className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+                  placeholder={t("home.eventConfig.eventNamePlaceholder")}
+                  value={newEventName}
+                  onChange={(e) => setNewEventName(e.target.value)}
+                />
+                <Button
+                  className="h-9 px-4 text-sm"
+                  disabled={!newEventWixId.trim() || !newEventName.trim()}
+                  onClick={() => void handleCreateEvent()}
+                >
+                  {t("home.eventConfig.addEvent")}
+                </Button>
+                <Button className="h-9 px-4 text-sm" variant="outline" onClick={() => void loadEventConfig()}>
+                  {t("home.eventConfig.refresh")}
+                </Button>
+              </div>
+            </div>
+
+            {loadingEventConfig ? (
+              <div className="py-4 text-center text-sm text-muted-foreground">{t("home.eventConfig.loading")}</div>
+            ) : eventConfigList.length === 0 ? (
+              <div className="py-4 text-center text-sm text-muted-foreground">{t("home.eventConfig.empty")}</div>
+            ) : (
+              <div className="divide-y divide-border/60 rounded-xl border border-border/70">
+                {eventConfigList.map((ev) => (
+                  <div key={ev.event_id} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{ev.name}</div>
+                        <div className="text-xs text-muted-foreground">{ev.wix_event_id} · v{ev.version}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          className="h-7 px-3 text-xs"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedEventForBlocks(ev.event_id);
+                            void loadBlocks(ev.event_id);
+                          }}
+                        >
+                          {t("home.eventConfig.viewBlocks")}
+                        </Button>
+                        <Button
+                          className="h-7 px-3 text-xs"
+                          variant="ghost"
+                          onClick={() => void handleDeleteEvent(ev.event_id)}
+                        >
+                          {t("home.eventConfig.deleteEvent")}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {selectedEventForBlocks === ev.event_id ? (
+                      <div className="mt-3 space-y-3 rounded-lg border border-border/50 bg-muted/20 p-3">
+                        <div className="text-xs font-medium text-muted-foreground">{t("home.eventConfig.blocks")}</div>
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            placeholder={t("home.eventConfig.blockCodePlaceholder")}
+                            value={newBlockCode}
+                            onChange={(e) => setNewBlockCode(e.target.value)}
+                          />
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            placeholder={t("home.eventConfig.blockNamePlaceholder")}
+                            value={newBlockName}
+                            onChange={(e) => setNewBlockName(e.target.value)}
+                          />
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            type="datetime-local"
+                            value={newBlockStartsAt}
+                            onChange={(e) => setNewBlockStartsAt(e.target.value)}
+                          />
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            type="datetime-local"
+                            value={newBlockEndsAt}
+                            onChange={(e) => setNewBlockEndsAt(e.target.value)}
+                          />
+                          <Button
+                            className="h-8 px-3 text-xs"
+                            disabled={!newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt}
+                            onClick={() => void handleAddBlock()}
+                          >
+                            {t("home.eventConfig.addBlock")}
+                          </Button>
+                        </div>
+
+                        {loadingBlocks ? (
+                          <div className="text-xs text-muted-foreground">{t("home.eventConfig.loading")}</div>
+                        ) : blockList.length === 0 ? (
+                          <div className="text-xs text-muted-foreground">{t("home.eventConfig.noBlocks")}</div>
+                        ) : (
+                          <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+                            {blockList.map((bl) => (
+                              <div key={bl.block_id} className="flex items-center justify-between px-3 py-2 text-xs">
+                                <div>
+                                  <span className="font-medium">{bl.name}</span>
+                                  <span className="ml-2 text-muted-foreground">[{bl.block_code}]</span>
+                                  <span className="ml-2 text-muted-foreground">
+                                    {bl.starts_at} → {bl.ends_at}
+                                  </span>
+                                </div>
+                                <Button
+                                  className="h-6 px-2 text-xs"
+                                  variant="ghost"
+                                  onClick={() => void handleDeleteBlock(bl.block_id)}
+                                >
+                                  {t("home.eventConfig.deleteBlock")}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {isBindingHelpOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
           <div className="w-full max-w-2xl rounded-2xl border border-border bg-background shadow-xl">
@@ -1015,6 +1269,7 @@ export default function HomePage() {
               <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsBindingHelpOpen(false)}>
                 {t("home.bindingHelp.close")}
               </Button>
+
             </div>
 
             <div className="space-y-4 px-5 py-4 text-sm">

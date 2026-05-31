@@ -824,7 +824,7 @@ Acceptance criteria:
 ## Phase 2: Event Configuration and Credential Management
 
 ### Story P2-US-01: Event and block configuration CRUD
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want to define events and blocks so check-in rules match event schedules.

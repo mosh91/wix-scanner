@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     credential_expiry_warning_hours: int = 24
     credential_lifecycle_db_path: str = "./data/credential_lifecycle.db"
     reconciliation_db_path: str = "./data/reconciliation.db"
+    event_block_config_db_path: str = "./data/event_block_config.db"
     wix_timeout_ms: int = 2500
     wix_max_retries: int = 3
     wix_retry_base_ms: int = 150

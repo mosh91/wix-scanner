@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.services.event_block_config import EventBlockConfigService, set_event_block_config_service
 from app.services.offline_queue import get_offline_queue_service
 from app.middleware.request_timing import RequestTimingMiddleware
 from app.services.scan_idempotency import ScanIdempotencyService
@@ -65,6 +66,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     startup_logger.info("scan_idempotency initialized with db_url=%s", database_url)
     scan_idempotency = ScanIdempotencyService(db_url=database_url)
     set_scan_idempotency_service(scan_idempotency)
+
+    # Initialize event block config service
+    event_block_svc = EventBlockConfigService(db_path=settings.event_block_config_db_path)
+    set_event_block_config_service(event_block_svc)
+    startup_logger.info("event_block_config initialized with db_path=%s", settings.event_block_config_db_path)
 
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes.admin_bindings import router as admin_bindings_router
 from app.api.routes.admin_credentials import router as admin_credentials_router
+from app.api.routes.admin_event_blocks import router as admin_event_blocks_router
 from app.api.routes.admin_readiness import router as admin_readiness_router
 from app.api.routes.admin_reconciliation import router as admin_reconciliation_router
 from app.api.routes.admin_scopes import router as admin_scopes_router
@@ -17,6 +18,7 @@ from app.api.routes.ws_health import router as ws_health_router
 
 api_router = APIRouter()
 api_router.include_router(admin_bindings_router, tags=["admin-bindings"])
+api_router.include_router(admin_event_blocks_router, tags=["admin-event-blocks"])
 api_router.include_router(admin_readiness_router, tags=["admin-readiness"])
 api_router.include_router(admin_reconciliation_router, tags=["admin-reconciliation"])
 api_router.include_router(admin_scopes_router, tags=["admin-scopes"])

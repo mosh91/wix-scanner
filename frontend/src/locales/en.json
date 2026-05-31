@@ -29,7 +29,8 @@
       "deliveries": "Webhook Deliveries",
       "credentials": "Credentials",
       "readiness": "Readiness",
-      "reconciliation": "Reconciliation"
+      "reconciliation": "Reconciliation",
+      "event-config": "Event Config"
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",
@@ -210,6 +211,25 @@
         "backend": "Backend connectivity",
         "worker": "Worker health"
       }
+    },
+    "eventConfig": {
+      "title": "Event Block Configuration",
+      "description": "Create and manage scan windows (blocks) for your Wix events.",
+      "createEvent": "Create Event",
+      "wixEventIdPlaceholder": "Wix event ID",
+      "eventNamePlaceholder": "Event name",
+      "addEvent": "Add Event",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "empty": "No events configured yet.",
+      "viewBlocks": "Blocks",
+      "deleteEvent": "Delete",
+      "blocks": "Blocks",
+      "noBlocks": "No blocks yet.",
+      "blockCodePlaceholder": "Block code",
+      "blockNamePlaceholder": "Block name",
+      "addBlock": "Add Block",
+      "deleteBlock": "Delete"
     },
     "reconciliation": {
       "title": "Reconciliation",
