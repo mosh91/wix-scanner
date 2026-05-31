@@ -562,6 +562,54 @@ class EventBlockConfigService:
                 )
                 self._snapshot_event(conn, event_id, new_event_version, actor)
 
+    # ── Block selection ───────────────────────────────────────────────────────
+
+    def select_block_for_wix_event(
+        self,
+        wix_event_id: str,
+        scan_timestamp: datetime,
+    ) -> EventBlockRecord | None:
+        """Return the best matching active block for *wix_event_id* at *scan_timestamp*.
+
+        A block is eligible when::
+
+            starts_at - grace_period_minutes  <=  scan_timestamp  <  ends_at
+
+        Among eligible blocks deterministic tie-breaking applies:
+        priority ASC (lower number = higher priority), then starts_at ASC,
+        then block_id ASC.
+        """
+        from datetime import timedelta
+
+        with sqlite3.connect(self._db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            event_row = conn.execute(
+                "SELECT event_id FROM event_config WHERE wix_event_id = ?",
+                (wix_event_id,),
+            ).fetchone()
+            if not event_row:
+                return None
+            event_id = event_row["event_id"]
+            rows = conn.execute(
+                "SELECT * FROM event_block WHERE event_id = ? AND is_active = 1",
+                (event_id,),
+            ).fetchall()
+
+        eligible: list[EventBlockRecord] = []
+        for row in rows:
+            block = self._row_to_block(row)
+            start = datetime.fromisoformat(block.starts_at)
+            end = datetime.fromisoformat(block.ends_at)
+            effective_start = start - timedelta(minutes=block.grace_period_minutes)
+            if effective_start <= scan_timestamp < end:
+                eligible.append(block)
+
+        if not eligible:
+            return None
+
+        eligible.sort(key=lambda b: (b.priority, b.starts_at, b.block_id))
+        return eligible[0]
+
     def list_config_versions(self, event_id: str) -> list[ConfigVersionRecord]:
         with sqlite3.connect(self._db_path) as conn:
             conn.row_factory = sqlite3.Row

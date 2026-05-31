@@ -19,6 +19,7 @@ from app.services.scan_runtime import scan_runtime_store
 from app.services.ticket_manifest import get_ticket_manifest_service
 from app.services.worker_health import get_worker_health_service
 from app.api.routes.checkins import set_scan_idempotency_service
+from app.services.reset_audit import ResetAuditService, set_reset_audit_service
 
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     event_block_svc = EventBlockConfigService(db_path=settings.event_block_config_db_path)
     set_event_block_config_service(event_block_svc)
     startup_logger.info("event_block_config initialized with db_path=%s", settings.event_block_config_db_path)
+
+    # Initialize reset audit service
+    reset_audit_svc = ResetAuditService(db_path=settings.reset_audit_db_path)
+    set_reset_audit_service(reset_audit_svc)
+    startup_logger.info("reset_audit initialized with db_path=%s", settings.reset_audit_db_path)
 
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())

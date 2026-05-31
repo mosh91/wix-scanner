@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     relay_auth_token: str = "dev-relay-auth-token-change-in-production"
     relay_signing_secret: str = "dev-relay-signing-secret-change-in-production"
     relay_protocol_version: str = "2026-05-29"
+    admin_api_key: str = "dev-admin-api-key-change-in-production"
+    reset_audit_db_path: str = "./data/reset_audit.db"
 
     model_config = SettingsConfigDict(
         env_file=".env",

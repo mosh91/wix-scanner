@@ -34,10 +34,13 @@ import {
   validateCredential,
   verifyBindingScopes,
   verifySiteEventBinding,
+  resetEvent,
+  listResetAudit,
   type AuthMode,
   type CredentialLifecycleRecord,
   type EventRecord,
   type EventBlockRecord,
+  type ResetAuditRecord,
   type SiteEventBindingRecord,
   type ReconciliationItemRecord,
   type ReconciliationRunRecord,
@@ -110,7 +113,18 @@ export default function HomePage() {
   const [newBlockName, setNewBlockName] = useState("");
   const [newBlockStartsAt, setNewBlockStartsAt] = useState("");
   const [newBlockEndsAt, setNewBlockEndsAt] = useState("");
+  const [newBlockGracePeriod, setNewBlockGracePeriod] = useState(0);
+  const [newBlockPriority, setNewBlockPriority] = useState(100);
   const [eventConfigError, setEventConfigError] = useState<string | null>(null);
+
+  // Reset state
+  const [resetTargetEventId, setResetTargetEventId] = useState<string | null>(null);
+  const [resetReason, setResetReason] = useState("");
+  const [resetActor, setResetActor] = useState("");
+  const [resetAdminKey, setResetAdminKey] = useState("");
+  const [resetInProgress, setResetInProgress] = useState(false);
+  const [auditRecords, setAuditRecords] = useState<ResetAuditRecord[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const loadEventConfig = useCallback(async () => {
     setLoadingEventConfig(true);
@@ -173,18 +187,22 @@ export default function HomePage() {
         name: newBlockName.trim() || newBlockCode.trim(),
         starts_at: newBlockStartsAt,
         ends_at: newBlockEndsAt,
+        grace_period_minutes: newBlockGracePeriod,
+        priority: newBlockPriority,
         actor: "operator-ui",
       });
       setNewBlockCode("");
       setNewBlockName("");
       setNewBlockStartsAt("");
       setNewBlockEndsAt("");
+      setNewBlockGracePeriod(0);
+      setNewBlockPriority(100);
       await loadBlocks(selectedEventForBlocks);
       toast.success("Block added");
     } catch (err) {
       setEventConfigError(err instanceof Error ? err.message : "Failed to create block");
     }
-  }, [selectedEventForBlocks, newBlockCode, newBlockName, newBlockStartsAt, newBlockEndsAt, loadBlocks]);
+  }, [selectedEventForBlocks, newBlockCode, newBlockName, newBlockStartsAt, newBlockEndsAt, newBlockGracePeriod, newBlockPriority, loadBlocks]);
 
   const handleDeleteBlock = useCallback(async (blockId: string) => {
     try {
@@ -195,6 +213,36 @@ export default function HomePage() {
       toast.error(err instanceof Error ? err.message : "Failed to delete block");
     }
   }, []);
+
+  const handleResetEvent = useCallback(async (wixEventId: string) => {
+    if (!resetReason.trim() || !resetActor.trim() || !resetAdminKey.trim()) return;
+    setResetInProgress(true);
+    try {
+      const result = await resetEvent(wixEventId, resetActor.trim(), resetReason.trim(), resetAdminKey.trim());
+      toast.success(t("home.eventConfig.resetSuccess", { count: result.records_cleared }));
+      setResetTargetEventId(null);
+      setResetReason("");
+      setResetActor("");
+      // Reload audit trail
+      const entries = await listResetAudit(resetAdminKey.trim());
+      setAuditRecords(entries);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("home.eventConfig.resetError"));
+    } finally {
+      setResetInProgress(false);
+    }
+  }, [resetReason, resetActor, resetAdminKey, t]);
+
+  const loadAuditTrail = useCallback(async () => {
+    if (!resetAdminKey.trim()) return;
+    setAuditError(null);
+    try {
+      const entries = await listResetAudit(resetAdminKey.trim());
+      setAuditRecords(entries);
+    } catch (err) {
+      setAuditError(err instanceof Error ? err.message : t("home.eventConfig.auditLoadError"));
+    }
+  }, [resetAdminKey, t]);
 
   const dashboardStats = useMemo(() => {
     const verifiedBindings = bindings.filter((item) => item.status === "verified").length;
@@ -1177,6 +1225,13 @@ export default function HomePage() {
                         </Button>
                         <Button
                           className="h-7 px-3 text-xs"
+                          variant="outline"
+                          onClick={() => setResetTargetEventId(resetTargetEventId === ev.wix_event_id ? null : ev.wix_event_id)}
+                        >
+                          {t("home.eventConfig.resetEventLabel")}
+                        </Button>
+                        <Button
+                          className="h-7 px-3 text-xs"
                           variant="ghost"
                           onClick={() => void handleDeleteEvent(ev.event_id)}
                         >
@@ -1184,6 +1239,52 @@ export default function HomePage() {
                         </Button>
                       </div>
                     </div>
+
+                    {resetTargetEventId === ev.wix_event_id ? (
+                      <div className="mt-3 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                        <div className="text-xs font-medium text-destructive">{t("home.eventConfig.resetConfirmTitle")}</div>
+                        <p className="text-xs text-muted-foreground">{t("home.eventConfig.resetConfirmDescription")}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            className="h-8 flex-1 rounded border border-border bg-background px-2 text-xs"
+                            placeholder={t("home.eventConfig.resetReasonPlaceholder")}
+                            title={t("home.eventConfig.resetReasonLabel")}
+                            value={resetReason}
+                            onChange={(e) => setResetReason(e.target.value)}
+                          />
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            placeholder={t("home.eventConfig.resetActorPlaceholder")}
+                            title={t("home.eventConfig.resetActorLabel")}
+                            value={resetActor}
+                            onChange={(e) => setResetActor(e.target.value)}
+                          />
+                          <input
+                            className="h-8 rounded border border-border bg-background px-2 text-xs"
+                            placeholder={t("home.eventConfig.resetAdminKeyPlaceholder")}
+                            title={t("home.eventConfig.resetAdminKeyLabel")}
+                            type="password"
+                            value={resetAdminKey}
+                            onChange={(e) => setResetAdminKey(e.target.value)}
+                          />
+                          <Button
+                            className="h-8 px-3 text-xs"
+                            variant="destructive"
+                            disabled={resetInProgress || !resetReason.trim() || !resetActor.trim() || !resetAdminKey.trim()}
+                            onClick={() => void handleResetEvent(ev.wix_event_id)}
+                          >
+                            {t("home.eventConfig.resetConfirmButton")}
+                          </Button>
+                          <Button
+                            className="h-8 px-3 text-xs"
+                            variant="ghost"
+                            onClick={() => setResetTargetEventId(null)}
+                          >
+                            {t("home.eventConfig.resetCancelButton")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {selectedEventForBlocks === ev.event_id ? (
                       <div className="mt-3 space-y-3 rounded-lg border border-border/50 bg-muted/20 p-3">
@@ -1213,6 +1314,25 @@ export default function HomePage() {
                             value={newBlockEndsAt}
                             onChange={(e) => setNewBlockEndsAt(e.target.value)}
                           />
+                          <input
+                            className="h-8 w-24 rounded border border-border bg-background px-2 text-xs"
+                            type="number"
+                            min={0}
+                            max={120}
+                            placeholder={t("home.eventConfig.gracePeriodPlaceholder")}
+                            title={t("home.eventConfig.gracePeriodLabel")}
+                            value={newBlockGracePeriod}
+                            onChange={(e) => setNewBlockGracePeriod(Number(e.target.value))}
+                          />
+                          <input
+                            className="h-8 w-20 rounded border border-border bg-background px-2 text-xs"
+                            type="number"
+                            min={0}
+                            placeholder={t("home.eventConfig.priorityPlaceholder")}
+                            title={t("home.eventConfig.priorityLabel")}
+                            value={newBlockPriority}
+                            onChange={(e) => setNewBlockPriority(Number(e.target.value))}
+                          />
                           <Button
                             className="h-8 px-3 text-xs"
                             disabled={!newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt}
@@ -1232,6 +1352,8 @@ export default function HomePage() {
                               <div key={bl.block_id} className="flex items-center justify-between px-3 py-2 text-xs">
                                 <div>
                                   <span className="font-medium">{bl.name}</span>
+                                  <span className="ml-2 text-muted-foreground">{t("home.eventConfig.gracePeriodLabel")}: {bl.grace_period_minutes}m</span>
+                                  <span className="ml-2 text-muted-foreground">{t("home.eventConfig.priorityLabel")}: {bl.priority}</span>
                                   <span className="ml-2 text-muted-foreground">[{bl.block_code}]</span>
                                   <span className="ml-2 text-muted-foreground">
                                     {bl.starts_at} → {bl.ends_at}
@@ -1254,6 +1376,51 @@ export default function HomePage() {
                 ))}
               </div>
             )}
+
+            {/* Reset Audit Trail */}
+            <div className="space-y-2 pt-2 border-t border-border/40">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium">{t("home.eventConfig.auditTrailLabel")}</div>
+                <div className="flex gap-2">
+                  <input
+                    className="h-7 rounded border border-border bg-background px-2 text-xs"
+                    placeholder={t("home.eventConfig.resetAdminKeyPlaceholder")}
+                    title={t("home.eventConfig.resetAdminKeyLabel")}
+                    type="password"
+                    value={resetAdminKey}
+                    onChange={(e) => setResetAdminKey(e.target.value)}
+                  />
+                  <Button className="h-7 px-3 text-xs" variant="outline" onClick={() => void loadAuditTrail()}>
+                    {t("home.common.refresh")}
+                  </Button>
+                </div>
+              </div>
+              {auditError ? (
+                <div className="text-xs text-destructive">{auditError}</div>
+              ) : auditRecords.length === 0 ? (
+                <div className="text-xs text-muted-foreground">{t("home.eventConfig.auditEmpty")}</div>
+              ) : (
+                <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+                  {auditRecords.map((rec) => (
+                    <div key={rec.reset_id} className="grid grid-cols-[auto_1fr] gap-x-3 px-3 py-2 text-xs">
+                      <span className="text-muted-foreground">{new Date(rec.performed_at).toLocaleString()}</span>
+                      <span>
+                        <span className="font-medium">{rec.scope}</span>
+                        {" · "}
+                        <span className="text-muted-foreground">{rec.scope_id}</span>
+                        {" · "}
+                        {rec.actor}
+                        {" — "}
+                        {rec.reason}
+                        {" ("}
+                        <span className="font-medium">{rec.records_cleared}</span>
+                        {" cleared)"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : null}

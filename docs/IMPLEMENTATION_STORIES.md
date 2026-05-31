@@ -844,7 +844,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-02: Early check-in grace period rules
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want grace periods per block so attendees can be checked in shortly before sessions start.
@@ -863,7 +863,7 @@ Acceptance criteria:
 ---
 
 ### Story P2-US-03: Batch reset and audit trail
-Status: `Not Started`
+Status: `Done`
 
 User story:
 As an admin, I want controlled reset actions so I can recover event state while preserving accountability.

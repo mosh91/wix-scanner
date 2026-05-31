@@ -104,3 +104,34 @@ class ScanIdempotencyService:
             return session.query(ScanIdempotencyRecord).filter_by(
                 scan_event_id=scan_event_id
             ).first()
+
+    def delete_by_event_id(self, event_id: str) -> int:
+        """Delete all scan records for an event. Returns the number of records deleted."""
+        with self.SessionLocal() as session:
+            count = (
+                session.query(ScanIdempotencyRecord)
+                .filter_by(event_id=event_id)
+                .count()
+            )
+            session.query(ScanIdempotencyRecord).filter_by(event_id=event_id).delete()
+            session.commit()
+        return count
+
+    def delete_by_timerange(
+        self, event_id: str, starts_at: datetime, ends_at: datetime
+    ) -> int:
+        """Delete scan records for an event created within [starts_at, ends_at).
+
+        Used for block-level reset: clears scans recorded during the block window.
+        Returns the number of records deleted.
+        """
+        with self.SessionLocal() as session:
+            q = session.query(ScanIdempotencyRecord).filter(
+                ScanIdempotencyRecord.event_id == event_id,
+                ScanIdempotencyRecord.created_at >= starts_at,
+                ScanIdempotencyRecord.created_at < ends_at,
+            )
+            count = q.count()
+            q.delete()
+            session.commit()
+        return count

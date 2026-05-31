@@ -752,3 +752,54 @@ export async function deleteBlock(blockId: string): Promise<void> {
   }
 }
 
+// ── Reset & audit ─────────────────────────────────────────────────────────────
+
+export type ResetResponse = {
+  reset_id: string;
+  scope: string;
+  scope_id: string;
+  actor: string;
+  reason: string;
+  records_cleared: number;
+  performed_at: string;
+};
+
+export type ResetAuditRecord = {
+  reset_id: string;
+  scope: string;
+  scope_id: string;
+  actor: string;
+  reason: string;
+  records_cleared: number;
+  performed_at: string;
+};
+
+export async function resetEvent(
+  wixEventId: string,
+  actor: string,
+  reason: string,
+  adminApiKey: string,
+): Promise<ResetResponse> {
+  const response = await fetch(`${API_BASE}/admin/resets/event/${encodeURIComponent(wixEventId)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminApiKey}`,
+    },
+    body: JSON.stringify({ confirmation: true, reason, actor }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Reset failed: ${response.status}`);
+  }
+  return (await response.json()) as ResetResponse;
+}
+
+export async function listResetAudit(adminApiKey: string, limit = 50): Promise<ResetAuditRecord[]> {
+  const response = await fetch(`${API_BASE}/admin/resets/audit?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${adminApiKey}` },
+  });
+  if (!response.ok) throw new Error(`Load audit failed: ${response.status}`);
+  return (await response.json()) as ResetAuditRecord[];
+}
+

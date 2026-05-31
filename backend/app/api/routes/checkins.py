@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.config import get_settings
 from app.services.qr_parser import QRParseError, parse_qr_payload
 from app.services.offline_queue import PendingCheckinJob, get_offline_queue_service
+from app.services.event_block_config import get_event_block_config_service as _get_ebc_service
 from app.services.relay_contract import (
     SUPPORTED_RELAY_PROTOCOL_VERSION,
     RelayContractEnvelope,
@@ -59,6 +60,16 @@ class RelayMetadata(BaseModel):
     ticket_number: str = Field(min_length=1, max_length=128)
 
 
+class SelectedBlockInfo(BaseModel):
+    block_id: str
+    block_code: str
+    name: str
+    starts_at: str
+    ends_at: str
+    grace_period_minutes: int
+    priority: int
+
+
 class ScanResponse(BaseModel):
     status: ScanStatus
     accepted: bool
@@ -72,6 +83,7 @@ class ScanResponse(BaseModel):
     response_time_ms: int
     idempotency_key: str
     correlation_id: str
+    selected_block: SelectedBlockInfo | None = None
 
 
 class ManifestSeedRequest(BaseModel):
@@ -440,6 +452,26 @@ def scan_ticket(
         reason=reason,
     )
 
+    # Block selection: attempt to resolve the active block using grace-period rules.
+    selected_block_info: SelectedBlockInfo | None = None
+    if event_id and event_id != "demo-event":
+        try:
+            from datetime import UTC as _UTC, datetime as _dt
+            ebc = _get_ebc_service()
+            matched = ebc.select_block_for_wix_event(event_id, _dt.now(_UTC))
+            if matched:
+                selected_block_info = SelectedBlockInfo(
+                    block_id=matched.block_id,
+                    block_code=matched.block_code,
+                    name=matched.name,
+                    starts_at=matched.starts_at,
+                    ends_at=matched.ends_at,
+                    grace_period_minutes=matched.grace_period_minutes,
+                    priority=matched.priority,
+                )
+        except RuntimeError:
+            pass  # EventBlockConfigService not initialised — skip enrichment
+
     scan_response = ScanResponse(
         status=scan_status,
         accepted=accepted,
@@ -453,6 +485,7 @@ def scan_ticket(
         response_time_ms=latency_ms,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
+        selected_block=selected_block_info,
     )
 
     if request.source == "relay":
