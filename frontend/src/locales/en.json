@@ -1,0 +1,316 @@
+{
+  "app": {
+    "name": "Wix Scanner",
+    "tagline": "Fast, reliable event check-in for Wix-powered venues"
+  },
+  "nav": {
+    "home": "Home",
+    "operator": "Operator"
+  },
+  "layout": {
+    "title": "Project skeleton ready",
+    "description": "Backend health, translated UI strings, and the operator shell are wired for rapid feature work.",
+    "primaryAction": "Open operator screen",
+    "controlCenter": "Control Center"
+  },
+  "home": {
+    "title": "Welcome",
+    "description": "This starter uses Spanish by default and includes shadcn-style building blocks.",
+    "toastButton": "Show toast",
+    "hero": {
+      "badge": "Venue Operations",
+      "title": "Run check-in from one clear command center",
+      "description": "Monitor event readiness, integration health, and webhook flow without opening developer panels.",
+      "primaryAction": "Start Operator Mode"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "integrations": "Integrations",
+      "deliveries": "Webhook Deliveries",
+      "credentials": "Credentials",
+      "readiness": "Readiness",
+      "reconciliation": "Reconciliation"
+    },
+    "metrics": {
+      "verifiedBindings": "Verified bindings",
+      "scopeWarnings": "Scope warnings",
+      "verifiedEvents": "Verified events",
+      "webhookIssues": "Webhook issues"
+    },
+    "dashboard": {
+      "quickActionsTitle": "Quick actions",
+      "quickActionsDescription": "Jump to scanning, refresh integrations, and review latest deliveries.",
+      "openOperator": "Open Operator Screen",
+      "refreshIntegrations": "Refresh Integrations",
+      "refreshDeliveries": "Refresh Deliveries",
+      "healthTitle": "Operational pulse",
+      "healthDescription": "A compact overview of what needs attention before doors open."
+    },
+    "common": {
+      "refresh": "Refresh",
+      "refreshing": "Refreshing..."
+    },
+    "webhook": {
+      "title": "Webhook Delivery History",
+      "description": "Monitor Wix mobile check-in webhooks and trigger manual retries for failed deliveries.",
+      "retry": "Retry",
+      "empty": "No webhook deliveries yet.",
+      "loadError": "Could not load webhook history",
+      "retrySuccess": "Webhook retry executed",
+      "retryError": "Could not retry webhook"
+    },
+    "bindings": {
+      "title": "Site-Event Binding Admin",
+      "description": "Bind Wix sites to events, verify app installation, and only activate verified events.",
+      "helpButton": "How to fill this",
+      "sitePlaceholder": "site-id",
+      "eventPlaceholder": "event-id",
+      "create": "Create Binding",
+      "verify": "Verify",
+      "activate": "Activate",
+      "status": "status:",
+      "app": "app:",
+      "verifiedEvents": "Verified Events",
+      "noVerifiedEvents": "No verified events available.",
+      "empty": "No bindings yet.",
+      "loadError": "Could not load Wix bindings",
+      "createSuccess": "Binding created and verified",
+      "createError": "Could not create binding",
+      "verifySuccess": "Verification executed",
+      "verifyError": "Could not verify binding",
+      "activateSuccess": "Event activated",
+      "activateError": "Activation blocked: event has no verified binding"
+    },
+    "bindingHelp": {
+      "title": "How to complete site-event binding",
+      "subtitle": "Guide based on Wix MCP flows and Wix API references.",
+      "close": "Close",
+      "step1Title": "Get the Wix site ID",
+      "step1Body": "Use Wix MCP ListWixSites (or Wix dashboard site info) and copy the exact site ID for the event owner site.",
+      "step2Title": "Get the Wix event ID",
+      "step2Body": "Use Wix MCP events listing (Query/List Events) and copy the target event ID. Use the exact event used for check-in.",
+      "step3Title": "Create the binding",
+      "step3Body": "Enter site-id and event-id in this screen, then create binding. Run Verify to confirm site/event/app installation state.",
+      "step4Title": "Validate installation and scopes",
+      "step4Body": "Run scope verification after binding is verified. Required permissions are WIX_EVENTS.READ_TICKETS, WIX_EVENTS.CHECK-IN, and WIX_EVENTS.READ_EVENTS.",
+      "referenceTitle": "References",
+      "referenceApps": "Wix docs: List Installed Apps",
+      "referenceEvents": "Wix docs: List Events",
+      "referenceInstance": "Wix docs: Get App Instance"
+    },
+    "scopes": {
+      "label": "scopes:",
+      "notChecked": "not checked",
+      "missing": "missing",
+      "verify": "Verify Scopes",
+      "verifySuccess": "Scope verification completed",
+      "verifyError": "Could not verify scopes"
+    },
+    "credentials": {
+      "title": "Credential Lifecycle",
+      "description": "Manage Wix API credential profiles, validate connectivity, and control auth-mode decisions across environments.",
+      "create": "Add Credential",
+      "validate": "Validate",
+      "activate": "Activate",
+      "rotate": "Rotate",
+      "revoke": "Revoke",
+      "empty": "No credentials yet.",
+      "loadError": "Could not load credentials",
+      "createSuccess": "Credential created",
+      "validateSuccess": "Credential validated",
+      "activateSuccess": "Credential activated",
+      "rotateSuccess": "Credential rotated — new profile is now active",
+      "revokeSuccess": "Credential revoked",
+      "helpButton": "How to use",
+      "profileNamePlaceholder": "profile-name",
+      "authModeLabel": "Auth mode",
+      "helpModal": {
+        "title": "How to verify the Wix app instance",
+        "subtitle": "Use the real Wix Get App Instance method before you validate or rotate credentials.",
+        "step1Title": "Call Get App Instance",
+        "step1Body": "Use Wix MCP to call Get App Instance for the target site. The method requires Wix app or Wix user authentication and does not take request parameters.",
+        "step2Title": "Check the response",
+        "step2Body": "Confirm the response includes the installed app instance and site information, such as instanceId, appName, siteId, and siteDisplayName.",
+        "step3Title": "Use it as your pre-check",
+        "step3Body": "If the app instance looks wrong or the app is not installed, fix that first. Then continue with credential validation or rotation.",
+        "referenceTitle": "Wix reference",
+        "referenceBody": "Get App Instance retrieves data about the app instance installed on a Wix site and the site itself.",
+        "referenceLink": "Open the Wix Get App Instance docs",
+        "close": "Cancel"
+      },
+      "states": {
+        "created": "Created",
+        "validated": "Validated",
+        "active": "Active",
+        "expiring_soon": "Expiring Soon",
+        "rotation_pending": "Rotation Pending",
+        "revoked": "Revoked",
+        "failed": "Failed"
+      },
+      "authModes": {
+        "oauth": "OAuth",
+        "api_key": "API Key"
+      },
+      "validateModal": {
+        "title": "Validate Wix API Credential",
+        "subtitle": "Use Wix MCP to confirm your credential is correctly configured before running validation.",
+        "step1Title": "Confirm your credential type",
+        "step1Body": "Check the auth mode of this credential (OAuth or API Key). For production, only OAuth is permitted.",
+        "step2Title": "Verify Wix app installation",
+        "step2Body": "Use Wix MCP 'Get App Instance' to confirm the Wix app is installed on the target site and the credential is still valid.",
+        "step3Title": "Run validation",
+        "step3Body": "Click Confirm to call the Wix API. The system will contact the Wix platform and update the credential state based on the response.",
+        "close": "Cancel",
+        "confirm": "Validate Now"
+      },
+      "rotateModal": {
+        "title": "Rotate Credential",
+        "subtitle": "Rotating creates a new credential, validates it, and revokes the old one. Use Wix MCP to prepare before confirming.",
+        "step1Title": "Prepare the new credential profile",
+        "step1Body": "Use Wix MCP 'Get App Instance' or the Wix dashboard to retrieve the new API token or OAuth credentials for the replacement profile.",
+        "step2Title": "Choose auth mode",
+        "step2Body": "For production environments, OAuth is required. Confirm the auth mode before rotating to avoid mixed-mode violations.",
+        "step3Title": "Rotation is atomic",
+        "step3Body": "The system will create and validate the new credential. If validation succeeds, the old credential is revoked. If it fails, the old credential stays active.",
+        "step4Title": "Check for mixed auth modes",
+        "step4Body": "After rotation, verify auth-mode consistency if running in production. Mixed modes are blocked in production.",
+        "close": "Cancel",
+        "confirm": "Rotate Now"
+      }
+    },
+    "readiness": {
+      "title": "Event Readiness",
+      "description": "Check bindings, credentials, scopes, manifest freshness, cache warming, backend connectivity, and worker health before activation.",
+      "eventPlaceholder": "event-id",
+      "check": "Check readiness",
+      "syncManifest": "Sync manifest",
+      "activate": "Activate event",
+      "refresh": "Refresh report",
+      "acknowledge": "I acknowledge degraded readiness and want to activate anyway.",
+      "loadError": "Could not load readiness report",
+      "syncSuccess": "Manifest sync started",
+      "syncError": "Could not sync manifest",
+      "activateSuccess": "Event activated after readiness check",
+      "activateError": "Could not activate event",
+      "empty": "Enter an event ID to evaluate readiness.",
+      "overall": "Overall status",
+      "failedChecks": "Failed checks",
+      "recommendedActions": "Recommended actions",
+      "statuses": {
+        "ready": "Ready",
+        "degraded": "Degraded",
+        "critical": "Critical"
+      },
+      "components": {
+        "binding": "Binding",
+        "credentials": "Credentials",
+        "scopes": "Scopes",
+        "manifest": "Manifest freshness",
+        "redis_cache": "Redis cache warming",
+        "backend": "Backend connectivity",
+        "worker": "Worker health"
+      }
+    },
+    "reconciliation": {
+      "title": "Reconciliation",
+      "description": "Compare local ticket state with Wix source-of-truth, apply deterministic drift resolution, and manually resolve conflicts.",
+      "eventPlaceholder": "event-id",
+      "run": "Run reconciliation",
+      "refresh": "Refresh",
+      "loadError": "Could not load reconciliation data",
+      "runSuccess": "Reconciliation run completed",
+      "runError": "Could not run reconciliation",
+      "resolveSuccess": "Conflict resolved",
+      "resolveError": "Could not resolve conflict",
+      "latestRun": "Latest run",
+      "driftCount": "Drift",
+      "resolvedCount": "Resolved",
+      "conflictCount": "Conflicts",
+      "conflictConsole": "Conflict console",
+      "noConflicts": "No conflicts to review.",
+      "localResult": "Local",
+      "wixResult": "Wix",
+      "acceptWix": "Accept Wix",
+      "keepLocal": "Keep local",
+      "states": {
+        "in_sync": "In sync",
+        "local_pending": "Local pending",
+        "local_only": "Local only",
+        "wix_only": "Wix only",
+        "conflict": "Conflict"
+      }
+    }
+  },
+  "operator": {
+    "title": "Operator screen",
+    "description": "This route is ready for the kiosk UI and scanner workflow.",
+    "idleMessage": "Please present your QR code or ticket to the scanner",
+    "successMessage": "Access granted",
+    "errorMessage": "Invalid or already processed ticket",
+    "processing": "Processing...",
+    "currentTicket": "Current ticket",
+    "healthTitle": "Real-time health",
+    "healthDescription": "Scanner, focus, and backend status",
+    "metricsTitle": "Response metrics",
+    "historyTitle": "Last 25 scans",
+    "emptyHistory": "No scans in this session yet",
+    "grantPermission": "Grant scanner access",
+    "focusLost": "Window focus was lost. Keep operator screen active.",
+    "scannerDisconnected": "Scanner disconnected or missing permission.",
+    "webhidUnavailable": "WebHID is unavailable. Keyboard capture fallback is active.",
+    "backendDegraded": "Backend is degraded. Check connectivity.",
+    "manifestStale": "Local ticket cache is stale. Validation is degraded.",
+    "offlineQueued": "Backend unavailable. Scan marked as offline queue.",
+    "health": {
+      "usb": "USB scanner",
+      "device": "Device health",
+      "focus": "Input focus",
+      "backend": "Backend connectivity",
+      "manifest": "Ticket cache",
+      "websocket": "WebSocket connection",
+      "remembered": "Remembered devices"
+    },
+    "metrics": {
+      "lastMs": "Last latency",
+      "min": "Min",
+      "max": "Max",
+      "avg": "Average",
+      "successRate": "Success rate",
+      "historySeries": "Recent latency series (ms)",
+      "noHistory": "No data yet"
+    },
+    "detail": {
+      "status": "Result",
+      "response": "Response time",
+      "time": "Time",
+      "wix": "Wix status",
+      "errorCode": "Error code",
+      "error": "Detail"
+    },
+    "validation": {
+      "maxLength": "Scanner payload is too long.",
+      "invalidCharset": "Scanner payload contains unsupported characters."
+    }
+  },
+  "bootstrap": {
+    "waitingTitle": "SCAN BOOTSTRAP QR",
+    "waitingSubtitle": "Present the bootstrap QR to the scanner to activate this kiosk",
+    "successTitle": "KIOSK ACTIVATED!",
+    "errorTitle": "INVALID BOOTSTRAP QR",
+    "sessionTitle": "Kiosk session",
+    "statusActive": "Active",
+    "statusInactive": "Not enrolled",
+    "enrolledEvent": "Event",
+    "enrolledStation": "Station",
+    "enrolledExpiry": "Expires",
+    "resetSession": "Reset session",
+    "sessionCleared": "Session cleared. Scan bootstrap QR to re-activate.",
+    "sessionExpired": "Kiosk session expired. Scan the bootstrap QR to re-activate.",
+    "notEnrolledError": "Kiosk is not enrolled. Scan the bootstrap QR first.",
+    "enrolledToast": "Kiosk enrolled — Event: {{event}}, Station: {{station}}",
+    "unknownError": "Unknown error validating bootstrap QR."
+  },
+  "toasts": {
+    "welcome": "Sonner is ready for operator notifications."
+  }
+}

@@ -47,6 +47,8 @@ Core goals:
 Canonical SQL schema for implementation:
 
 - [docs/DB_SCHEMA.sql](docs/DB_SCHEMA.sql)
+- [docs/STORAGE_MODEL.md](docs/STORAGE_MODEL.md) (why Postgres and SQLite coexist)
+- [docs/RELAY_MODEL.md](docs/RELAY_MODEL.md) (what relay is and when to deploy it)
 
 Why this schema exists:
 
@@ -56,29 +58,31 @@ Why this schema exists:
 
 ## Development Mode (Local Docker)
 
-For local development, run PostgreSQL and Redis with Docker Compose.
+For local development, run the full backend/frontend stack with Docker Compose.
 
 Compose file:
 
-- [infra/docker/docker-compose.dev.yml](infra/docker/docker-compose.dev.yml)
+- [infra/wix_scanner/docker-compose.dev.yml](infra/wix_scanner/docker-compose.dev.yml)
 
 Start local infrastructure:
 
 ```bash
-docker compose -f infra/docker/docker-compose.dev.yml up -d
+docker compose -f infra/wix_scanner/docker-compose.dev.yml up -d --build
 ```
 
 Stop local infrastructure:
 
 ```bash
-docker compose -f infra/docker/docker-compose.dev.yml down
+docker compose -f infra/wix_scanner/docker-compose.dev.yml down
 ```
 
 Notes:
 
 - PostgreSQL initializes automatically with [docs/DB_SCHEMA.sql](docs/DB_SCHEMA.sql).
 - Redis runs with AOF enabled for durability in local testing.
-- Backend/frontend app containers can be added later; this file currently provides core dependencies.
+- Backend runs on http://localhost:8000 and exposes [GET /api/health](http://localhost:8000/api/health).
+- Frontend runs on http://localhost:5173 and loads the Spanish UI shell by default.
+- Use the root [Makefile](Makefile) for day-to-day dev commands such as `dev-backend`, `dev-frontend`, `test-backend`, and `test-frontend`.
 
 ## Wix MCP Workspace Setup (VS Code)
 

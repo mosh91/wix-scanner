@@ -1,0 +1,15 @@
+[Unit]
+Description=Wix Scanner Edge Relay
+After=network.target
+
+[Service]
+Type=simple
+User=wix
+WorkingDirectory=/opt/wix-scanner-relay/relay
+EnvironmentFile=/opt/wix-scanner-relay/relay/.env
+ExecStart=/opt/wix-scanner-relay/relay/scripts/wix-scanner-relay-start.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
