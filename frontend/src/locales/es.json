@@ -134,9 +134,11 @@
       }
     },
     "bindings": {
-      "title": "Administracion de bindings sitio-evento",
-      "description": "Asocia sitios Wix con eventos, verifica instalacion de la app y activa solo eventos verificados.",
+      "title": "Integraciones",
+      "description": "Use la instancia de la app Wix desde .env para obtener el sitio, importar eventos y gestionar bindings sitio-evento.",
       "helpButton": "Como completar esto",
+      "autobind": "Autobinding desde Wix",
+      "autobinding": "Obteniendo datos desde Wix...",
       "sitePlaceholder": "site-id",
       "eventPlaceholder": "event-id",
       "create": "Crear binding",

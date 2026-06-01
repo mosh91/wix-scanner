@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   activateCredential,
   activateEvent,
+  autobindIntegrations,
   createCredential,
   createEvent,
   createBlock,
@@ -74,7 +75,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "setup" | "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "event-config" | "secret-rotation" | "relay-management";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "secret-rotation" | "relay-management";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -86,7 +87,7 @@ export default function HomePage() {
   const [scopeAudits, setScopeAudits] = useState<Record<string, WixScopeAuditRecord>>({});
   const [newSiteId, setNewSiteId] = useState("site-demo-01");
   const [newEventId, setNewEventId] = useState("event-demo-01");
-  const [activeTab, setActiveTab] = useState<HomeTab>("setup");
+  const [activeTab, setActiveTab] = useState<HomeTab>("integrations");
   const [isBindingHelpOpen, setIsBindingHelpOpen] = useState(false);
 
   // Credential lifecycle state
@@ -113,6 +114,7 @@ export default function HomePage() {
   const [apiKeySettings, setApiKeySettings] = useState<ApiKeySettingsResponse | null>(null);
   const [loadingApiKeySettings, setLoadingApiKeySettings] = useState(false);
   const [isAuthModeGuideExpanded, setIsAuthModeGuideExpanded] = useState(false);
+  const [isAutobinding, setIsAutobinding] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [wixAccountId, setWixAccountId] = useState("");
   const [testingApiKey, setTestingApiKey] = useState(false);
@@ -357,8 +359,21 @@ export default function HomePage() {
   const primaryEventId = primaryBinding?.wix_event_id ?? verifiedEvents[0]?.wix_event_id ?? newEventId;
   const primarySiteId = primaryBinding?.wix_site_id ?? newSiteId;
   const selectedAuthMode = authTokenStatus?.auth_mode ?? apiKeySettings?.auth_mode ?? null;
-  const showOAuthAuthSettings = selectedAuthMode === "oauth" || selectedAuthMode === null;
-  const showApiKeySettings = selectedAuthMode === "api_key" || selectedAuthMode === null;
+
+  const eventNameByWixEventId = useMemo(() => {
+    return eventConfigList.reduce<Record<string, string>>((acc, event) => {
+      acc[event.wix_event_id] = event.name;
+      return acc;
+    }, {});
+  }, [eventConfigList]);
+
+  const getEventDisplayLabel = useCallback(
+    (wixEventId: string) => {
+      const name = eventNameByWixEventId[wixEventId];
+      return name ? `${name} (${wixEventId})` : wixEventId;
+    },
+    [eventNameByWixEventId],
+  );
 
   const loadWebhookHistory = useCallback(async () => {
     setLoadingWebhooks(true);
@@ -403,6 +418,12 @@ export default function HomePage() {
     void loadBindings();
   }, [loadBindings]);
 
+  useEffect(() => {
+    if (activeTab === "integrations") {
+      void loadEventConfig();
+    }
+  }, [activeTab, loadEventConfig]);
+
   const handleRetry = async (deliveryId: number) => {
     try {
       await retryWebhookDelivery(deliveryId);
@@ -425,6 +446,30 @@ export default function HomePage() {
       await loadBindings();
     } catch {
       toast.error(t("home.bindings.createError"));
+    }
+  };
+
+  const handleAutobind = async () => {
+    if (isAutobinding) {
+      return;
+    }
+    setIsAutobinding(true);
+    try {
+      const result = await autobindIntegrations("operator-ui");
+      setNewSiteId(result.site_id);
+      if (result.event_ids[0]) {
+        setNewEventId(result.event_ids[0]);
+      }
+      await Promise.all([loadBindings(), loadEventConfig()]);
+      toast.success(
+        result.site_display_name
+          ? `${result.site_display_name}: ${result.bindings_verified}/${result.events_found} events bound`
+          : `${result.bindings_verified}/${result.events_found} events bound`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to autobind Wix integrations");
+    } finally {
+      setIsAutobinding(false);
     }
   };
 
@@ -580,13 +625,13 @@ export default function HomePage() {
   }, [t]);
 
   useEffect(() => {
-    if (activeTab === "auth-settings" || activeTab === "setup") {
+    if (activeTab === "auth-settings") {
       void loadAuthSettings();
     }
   }, [activeTab, loadAuthSettings]);
 
   useEffect(() => {
-    if (activeTab === "api-key-management" || activeTab === "setup") {
+    if (activeTab === "api-key-management") {
       void loadApiKeySettings();
     }
   }, [activeTab, loadApiKeySettings]);
@@ -813,7 +858,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["setup", "integrations", "deliveries", "readiness", "sync-controls", "reconciliation", "event-config", "relay-management", "secret-rotation"] as HomeTab[]).map((tab) => (
+        {(["integrations", "deliveries", "readiness", "sync-controls", "reconciliation", "credentials", "auth-settings", "api-key-management", "relay-management", "secret-rotation"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -825,12 +870,12 @@ export default function HomePage() {
         ))}
       </div>
 
-      {activeTab === "setup" ? (
+      {activeTab === "integrations" ? (
         <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
           <Card className="border-border/70 bg-[linear-gradient(145deg,rgba(255,255,255,1)_0%,rgba(241,245,249,0.8)_100%)]">
             <CardHeader>
-              <CardTitle>{t("home.setup.title")}</CardTitle>
-              <CardDescription>{t("home.setup.description")}</CardDescription>
+              <CardTitle>{t("home.bindings.title")}</CardTitle>
+              <CardDescription>{t("home.bindings.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
@@ -849,6 +894,9 @@ export default function HomePage() {
                 <Button onClick={() => void handleCreateBinding()}>{t("home.bindings.create")}</Button>
                 <Button variant="secondary" onClick={() => void loadBindings()} disabled={loadingBindings}>
                   {loadingBindings ? t("home.common.refreshing") : t("home.common.refresh")}
+                </Button>
+                <Button onClick={() => void handleAutobind()} disabled={isAutobinding}>
+                  {isAutobinding ? t("home.bindings.autobinding") : t("home.bindings.autobind")}
                 </Button>
               </div>
 
@@ -1083,7 +1131,9 @@ export default function HomePage() {
                     >
                       <div className="space-y-1 text-sm">
                         <div className="font-medium">
-                          {binding.wix_site_id} {"->"} {binding.wix_event_id}
+                          {(binding.wix_site_name && `${binding.wix_site_name} (${binding.wix_site_id})`) || binding.wix_site_id}
+                          {" -> "}
+                          {binding.wix_event_name ?? getEventDisplayLabel(binding.wix_event_id)}
                         </div>
                         <div className="text-muted-foreground">
                           {t("home.bindings.status")} {binding.status} | {t("home.bindings.app")} {binding.app_installation_status}
@@ -1134,7 +1184,7 @@ export default function HomePage() {
                 <div className="flex flex-wrap gap-2">
                   {verifiedEvents.map((event) => (
                     <Badge key={`${event.wix_site_id}-${event.wix_event_id}`} variant="outline">
-                      {event.wix_event_id}
+                      {event.wix_event_name ?? eventNameByWixEventId[event.wix_event_id] ?? event.wix_event_id}
                     </Badge>
                   ))}
                 </div>
@@ -1187,7 +1237,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "auth-settings" || (activeTab === "setup" && showOAuthAuthSettings) ? (
+      {activeTab === "auth-settings" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1247,7 +1297,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "api-key-management" || (activeTab === "setup" && showApiKeySettings) ? (
+      {activeTab === "api-key-management" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1797,7 +1847,7 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {activeTab === "event-config" ? (
+      {activeTab === "integrations" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">

@@ -63,7 +63,9 @@ export type AppInstallationStatus = "pending_install" | "installed" | "uninstall
 export type SiteEventBindingRecord = {
   binding_id: string;
   wix_site_id: string;
+  wix_site_name?: string | null;
   wix_event_id: string;
+  wix_event_name?: string | null;
   status: SiteEventBindingStatus;
   app_installation_status: AppInstallationStatus;
   credential_profile_id: string | null;
@@ -82,6 +84,19 @@ export type CreateSiteEventBindingRequest = {
   verify_immediately?: boolean;
   credential_profile_id?: string;
   sync_policy_profile_id?: string;
+};
+
+export type AutobindIntegrationsResponse = {
+  site_id: string;
+  site_display_name: string | null;
+  app_instance_id: string;
+  events_found: number;
+  events_imported: number;
+  bindings_created: number;
+  bindings_verified: number;
+  existing_bindings: number;
+  event_ids: string[];
+  binding_ids: string[];
 };
 
 export type ActivateEventResponse = {
@@ -171,6 +186,7 @@ export type WixSyncControlRecord = {
 export type VerifiedEventRecord = {
   wix_event_id: string;
   wix_site_id: string;
+  wix_event_name?: string | null;
 };
 
 export type WixScopeAuditRecord = {
@@ -325,6 +341,18 @@ export async function listSiteEventBindings(): Promise<SiteEventBindingRecord[]>
     throw new Error(`List site-event bindings failed with status ${response.status}`);
   }
   return (await response.json()) as SiteEventBindingRecord[];
+}
+
+export async function autobindIntegrations(actor = "operator-ui"): Promise<AutobindIntegrationsResponse> {
+  const response = await fetch(`${API_BASE}/admin/integrations/autobind`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!response.ok) {
+    throw new Error(`Autobind integrations failed with status ${response.status}`);
+  }
+  return (await response.json()) as AutobindIntegrationsResponse;
 }
 
 export async function verifySiteEventBinding(bindingId: string, actor = "operator-ui"): Promise<SiteEventBindingRecord> {

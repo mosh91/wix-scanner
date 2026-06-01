@@ -24,7 +24,9 @@ class SiteEventBindingCreateRequest(BaseModel):
 class SiteEventBindingResponse(BaseModel):
     binding_id: str
     wix_site_id: str
+    wix_site_name: str | None = None
     wix_event_id: str
+    wix_event_name: str | None = None
     status: BindingStatus
     app_installation_status: AppInstallationStatus
     binding_verified_at: str | None
@@ -40,6 +42,7 @@ class SiteEventBindingVerifyRequest(BaseModel):
 class VerifiedEventResponse(BaseModel):
     wix_event_id: str
     wix_site_id: str
+    wix_event_name: str | None = None
 
 
 class EventActivationRequest(BaseModel):
@@ -62,7 +65,9 @@ def _to_binding_response(record: WixSiteEventBindingRecord) -> SiteEventBindingR
     return SiteEventBindingResponse(
         binding_id=record.binding_id,
         wix_site_id=record.wix_site_id,
+        wix_site_name=record.wix_site_name,
         wix_event_id=record.wix_event_id,
+        wix_event_name=record.wix_event_name,
         status=record.status,
         app_installation_status=record.app_installation_status,
         binding_verified_at=record.binding_verified_at,

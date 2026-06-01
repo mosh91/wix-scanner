@@ -134,9 +134,11 @@
       }
     },
     "bindings": {
-      "title": "Site-Event Binding Admin",
-      "description": "Bind Wix sites to events, verify app installation, and only activate verified events.",
+      "title": "Integrations",
+      "description": "Use the Wix app instance from .env to pull the site, import events, and manage site-event bindings.",
       "helpButton": "How to fill this",
+      "autobind": "Autobind from Wix",
+      "autobinding": "Pulling from Wix...",
       "sitePlaceholder": "site-id",
       "eventPlaceholder": "event-id",
       "create": "Create Binding",

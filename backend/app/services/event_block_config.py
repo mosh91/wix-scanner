@@ -313,6 +313,43 @@ class EventBlockConfigService:
             ).scalar_one()
             return self._row_to_event(result)
 
+    def get_event_by_wix_event_id(self, wix_event_id: str) -> EventRecord | None:
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_EventConfigRow).where(_EventConfigRow.wix_event_id == wix_event_id)
+            ).scalar_one_or_none()
+        return self._row_to_event(row) if row else None
+
+    def upsert_event(
+        self,
+        *,
+        wix_event_id: str,
+        name: str,
+        timezone: str = "UTC",
+        allow_block_overlap: bool = False,
+        actor: str = "system",
+    ) -> tuple[EventRecord, bool]:
+        existing = self.get_event_by_wix_event_id(wix_event_id)
+        if existing is not None:
+            updated = self.update_event(
+                existing.event_id,
+                name=name,
+                timezone=timezone,
+                allow_block_overlap=allow_block_overlap,
+                actor=actor,
+            )
+            return updated, False
+
+        created = self.create_event(
+            wix_event_id=wix_event_id,
+            name=name,
+            timezone=timezone,
+            allow_block_overlap=allow_block_overlap,
+            actor=actor,
+        )
+        return created, True
+
     def get_event(self, event_id: str) -> EventRecord | None:
         from sqlalchemy import select
         with self._session_factory() as session:

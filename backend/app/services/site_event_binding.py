@@ -131,10 +131,29 @@ class WixBindingVerifier:
 
 
 @dataclass(frozen=True)
+class WixSiteRecord:
+    site_id: str
+    name: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class WixEventNameRecord:
+    event_id: str
+    wix_event_id: str
+    name: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class WixSiteEventBindingRecord:
     binding_id: str
     wix_site_id: str
     wix_event_id: str
+    wix_site_name: str | None
+    wix_event_name: str | None
     status: BindingStatus
     app_installation_status: AppInstallationStatus
     binding_verified_at: str | None
@@ -183,6 +202,26 @@ class _BindingRow(_Base):
     updated_at = Column(String, nullable=False)
 
 
+class _WixSiteRow(_Base):
+    __tablename__ = "wix_site"
+    __table_args__ = (UniqueConstraint("wix_site_id", name="wix_site_unique_id"),)
+    id = Column(String, primary_key=True)
+    wix_site_id = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+
+class _WixEventNameRow(_Base):
+    __tablename__ = "wix_event_name"
+    __table_args__ = (UniqueConstraint("wix_event_id", name="wix_event_name_unique_id"),)
+    id = Column(String, primary_key=True)
+    wix_event_id = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+
 class _EventActivationRow(_Base):
     __tablename__ = "event_activation"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -219,11 +258,18 @@ class SiteEventBindingService:
             return v.isoformat()
         return str(v)
 
-    def _row_to_record(self, row: _BindingRow) -> WixSiteEventBindingRecord:
+    def _row_to_record(
+        self,
+        row: _BindingRow,
+        wix_site_name: str | None = None,
+        wix_event_name: str | None = None,
+    ) -> WixSiteEventBindingRecord:
         return WixSiteEventBindingRecord(
             binding_id=str(row.binding_id or row.id),
             wix_site_id=row.wix_site_id,
             wix_event_id=row.wix_event_id,
+            wix_site_name=wix_site_name,
+            wix_event_name=wix_event_name,
             status=row.status,
             app_installation_status=row.app_installation_status,
             binding_verified_at=self._to_str(row.binding_verified_at),
@@ -231,6 +277,66 @@ class SiteEventBindingService:
             created_at=self._to_str(row.created_at),
             updated_at=self._to_str(row.updated_at),
         )
+
+    def _upsert_wix_site_name(self, wix_site_id: str, name: str) -> None:
+        if not name:
+            return
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_WixSiteRow).where(_WixSiteRow.wix_site_id == wix_site_id)
+            ).scalar_one_or_none()
+            now = self._now()
+            if row is None:
+                session.add(_WixSiteRow(
+                    id=str(uuid4()),
+                    wix_site_id=wix_site_id,
+                    name=name,
+                    created_at=now,
+                    updated_at=now,
+                ))
+            else:
+                row.name = name
+                row.updated_at = now
+            session.commit()
+
+    def _upsert_wix_event_name(self, wix_event_id: str, name: str) -> None:
+        if not name:
+            return
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_WixEventNameRow).where(_WixEventNameRow.wix_event_id == wix_event_id)
+            ).scalar_one_or_none()
+            now = self._now()
+            if row is None:
+                session.add(_WixEventNameRow(
+                    id=str(uuid4()),
+                    wix_event_id=wix_event_id,
+                    name=name,
+                    created_at=now,
+                    updated_at=now,
+                ))
+            else:
+                row.name = name
+                row.updated_at = now
+            session.commit()
+
+    def _get_event_name_for_id(self, wix_event_id: str) -> str | None:
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_WixEventNameRow).where(_WixEventNameRow.wix_event_id == wix_event_id)
+            ).scalar_one_or_none()
+        return row.name if row is not None else None
+
+    def _get_site_name_for_id(self, wix_site_id: str) -> str | None:
+        from sqlalchemy import select
+        with self._session_factory() as session:
+            row = session.execute(
+                select(_WixSiteRow).where(_WixSiteRow.wix_site_id == wix_site_id)
+            ).scalar_one_or_none()
+        return row.name if row is not None else None
 
     def create_binding(
         self,
@@ -243,20 +349,27 @@ class SiteEventBindingService:
         from sqlalchemy import select, text
         binding_id = str(uuid4())
         now = self._now()
+        event_name: str | None = None
         with self._session_factory() as session:
             # On PostgreSQL, look up the internal event UUID via wix_event_id.
             # On SQLite (test environments), fall back to wix_event_id as the FK value.
             is_postgres = self._engine.dialect.name == "postgresql"
             if is_postgres:
                 event_row = session.execute(
-                    text("SELECT id FROM event WHERE wix_event_id = :wix_event_id"),
+                    text("SELECT id, name FROM event WHERE wix_event_id = :wix_event_id"),
                     {"wix_event_id": wix_event_id},
                 ).fetchone()
                 if event_row is None:
                     raise ValueError(f"Event with wix_event_id={wix_event_id!r} not found. Create the event first.")
                 event_id = str(event_row[0])
+                event_name = event_row[1]
             else:
                 event_id = wix_event_id
+                event_row = session.execute(
+                    text("SELECT name FROM event WHERE wix_event_id = :wix_event_id"),
+                    {"wix_event_id": wix_event_id},
+                ).fetchone()
+                event_name = event_row[0] if event_row is not None else None
             session.add(_BindingRow(
                 id=binding_id,
                 event_id=event_id,
@@ -270,6 +383,9 @@ class SiteEventBindingService:
             ))
             session.commit()
 
+        if event_name:
+            self._upsert_wix_event_name(wix_event_id, event_name)
+
         if verify_immediately:
             return self.verify_binding(binding_id=binding_id, verified_by_actor=created_by_actor)
 
@@ -278,31 +394,58 @@ class SiteEventBindingService:
     def get_binding(self, binding_id: str) -> WixSiteEventBindingRecord:
         from sqlalchemy import select
         with self._session_factory() as session:
-            row = session.execute(
-                select(_BindingRow).where(_BindingRow.binding_id == binding_id)
-            ).scalar_one_or_none()
+            q = (
+                select(
+                    _BindingRow,
+                    _WixSiteRow.name.label("wix_site_name"),
+                    _WixEventNameRow.name.label("wix_event_name"),
+                )
+                .join(_WixSiteRow, _WixSiteRow.wix_site_id == _BindingRow.wix_site_id, isouter=True)
+                .join(_WixEventNameRow, _WixEventNameRow.wix_event_id == _BindingRow.wix_event_id, isouter=True)
+                .where(_BindingRow.binding_id == binding_id)
+            )
+            row = session.execute(q).one_or_none()
         if row is None:
             raise ValueError("Binding not found")
-        return self._row_to_record(row)
+        binding_row, wix_site_name, wix_event_name = row
+        return self._row_to_record(binding_row, wix_site_name, wix_event_name)
 
     def get_binding_by_event_id(self, wix_event_id: str) -> WixSiteEventBindingRecord | None:
         from sqlalchemy import select
         with self._session_factory() as session:
-            row = session.execute(
-                select(_BindingRow).where(_BindingRow.wix_event_id == wix_event_id)
-            ).scalar_one_or_none()
+            q = (
+                select(
+                    _BindingRow,
+                    _WixSiteRow.name.label("wix_site_name"),
+                    _WixEventNameRow.name.label("wix_event_name"),
+                )
+                .join(_WixSiteRow, _WixSiteRow.wix_site_id == _BindingRow.wix_site_id, isouter=True)
+                .join(_WixEventNameRow, _WixEventNameRow.wix_event_id == _BindingRow.wix_event_id, isouter=True)
+                .where(_BindingRow.wix_event_id == wix_event_id)
+            )
+            row = session.execute(q).one_or_none()
         if row is None:
             return None
-        return self._row_to_record(row)
+        binding_row, wix_site_name, wix_event_name = row
+        return self._row_to_record(binding_row, wix_site_name, wix_event_name)
 
     def list_bindings(self, *, status: BindingStatus | None = None) -> list[WixSiteEventBindingRecord]:
         from sqlalchemy import select, desc
         with self._session_factory() as session:
-            q = select(_BindingRow).order_by(desc(_BindingRow.created_at))
+            q = (
+                select(
+                    _BindingRow,
+                    _WixSiteRow.name.label("wix_site_name"),
+                    _WixEventNameRow.name.label("wix_event_name"),
+                )
+                .join(_WixSiteRow, _WixSiteRow.wix_site_id == _BindingRow.wix_site_id, isouter=True)
+                .join(_WixEventNameRow, _WixEventNameRow.wix_event_id == _BindingRow.wix_event_id, isouter=True)
+                .order_by(desc(_BindingRow.created_at))
+            )
             if status is not None:
                 q = q.where(_BindingRow.status == status)
-            rows = session.execute(q).scalars().all()
-        return [self._row_to_record(r) for r in rows]
+            rows = session.execute(q).all()
+        return [self._row_to_record(binding_row, wix_site_name, wix_event_name) for binding_row, wix_site_name, wix_event_name in rows]
 
     def verify_binding(self, *, binding_id: str, verified_by_actor: str) -> WixSiteEventBindingRecord:
         existing = self.get_binding(binding_id)
@@ -351,17 +494,28 @@ class SiteEventBindingService:
 
         return self.get_binding(binding_id)
 
-    def get_verified_events(self) -> list[dict[str, str]]:
-        from sqlalchemy import select, desc
+    def get_verified_events(self) -> list[dict[str, str | None]]:
+        from sqlalchemy import select, desc, outerjoin
         with self._session_factory() as session:
             rows = session.execute(
-                select(_BindingRow)
-                .where(_BindingRow.status == "verified")
-                .order_by(desc(_BindingRow.created_at))
-            ).scalars().all()
+                select(
+                    _BindingRow.wix_event_id,
+                    _BindingRow.wix_site_id,
+                    _WixEventNameRow.name.label("wix_event_name"),
+                ).select_from(
+                    _BindingRow.outerjoin(
+                        _WixEventNameRow,
+                        _WixEventNameRow.wix_event_id == _BindingRow.wix_event_id,
+                    )
+                ).where(_BindingRow.status == "verified").order_by(desc(_BindingRow.created_at))
+            ).all()
         return [
-            {"wix_event_id": r.wix_event_id, "wix_site_id": r.wix_site_id}
-            for r in rows
+            {
+                "wix_event_id": wix_event_id,
+                "wix_site_id": wix_site_id,
+                "wix_event_name": wix_event_name,
+            }
+            for wix_event_id, wix_site_id, wix_event_name in rows
         ]
 
     def activate_event(self, *, wix_event_id: str, actor: str) -> EventActivationRecord:
