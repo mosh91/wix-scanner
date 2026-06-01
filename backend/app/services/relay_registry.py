@@ -15,8 +15,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy import Column, String, Integer, DateTime, Text
+from sqlalchemy.orm import DeclarativeBase
+
+from app.db import make_engine, make_session_factory
 
 from app.core.config import Settings, get_settings
 
@@ -210,14 +212,17 @@ def _build_signed_token(secret: str, credential_id: str, event_id: str,
 class RelayRegistryService:
     def __init__(self, *, settings: Settings | None = None, db_path: str | None = None) -> None:
         self._settings = settings or get_settings()
-        db_url = (
-            f"sqlite:///{db_path}"
-            if db_path
-            else f"sqlite:///{self._settings.relay_registry_db_path}"
-        )
-        engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        # Allow relay registry to persist to any configured SQL URL (Postgres preferred).
+        db_url = db_path or self._settings.relay_registry_db_path
+        # If the project default local file is still configured, prefer the central Postgres DB.
+        if db_url == "./data/relay_registry.db":
+            db_url = self._settings.database_url
+        # If a plain filesystem path was provided (legacy), treat it as SQLite file path.
+        if not (db_url.startswith("sqlite://") or "://" in db_url):
+            db_url = f"sqlite:///{db_url}"
+        engine = make_engine(db_url, connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {})
         _Base.metadata.create_all(engine)
-        self._Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+        self._Session = make_session_factory(engine)
 
     # ------------------------------------------------------------------
     # Relay instances

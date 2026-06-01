@@ -503,7 +503,8 @@ class SiteEventBindingService:
                     _BindingRow.wix_site_id,
                     _WixEventNameRow.name.label("wix_event_name"),
                 ).select_from(
-                    _BindingRow.outerjoin(
+                    outerjoin(
+                        _BindingRow,
                         _WixEventNameRow,
                         _WixEventNameRow.wix_event_id == _BindingRow.wix_event_id,
                     )

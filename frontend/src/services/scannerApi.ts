@@ -1156,3 +1156,194 @@ export async function revokeBootstrapCredential(
   if (!response.ok) throw new Error(`Revoke bootstrap credential failed: ${response.status}`);
   return (await response.json()) as BootstrapCredentialRecord;
 }
+
+// ---------------------------------------------------------------------------
+// Kiosk QR management
+// ---------------------------------------------------------------------------
+
+export type KioskRecord = {
+  kiosk_id: string;
+  name: string | null;
+  site_id: string;
+  event_id: string;
+  station_id?: string | null;
+  status: "active" | "inactive";
+  token_preview?: string | null;
+  last_regenerated_at?: string | null;
+  created_at: string;
+};
+
+export type RegenerateKioskQRResponse = {
+  kiosk_id: string;
+  token: string; // full token returned once
+  token_preview?: string | null;
+  created_at: string;
+};
+
+function adminHeaders(adminApiKey: string, contentType = false): Record<string, string> {
+  return {
+    Authorization: `Bearer ${adminApiKey}`,
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
+export async function listKiosks(adminApiKey: string): Promise<KioskRecord[]> {
+  // backend exposes bootstrap credentials — map them into kiosk-like records
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+    headers: adminHeaders(adminApiKey),
+  });
+  if (!response.ok) throw new Error(`List kiosks failed: ${response.status}`);
+  const rows = (await response.json()) as Array<{
+    credential_id: string;
+    relay_id?: string | null;
+    station_id: string;
+    event_id: string;
+    token_preview?: string | null;
+    mode?: string;
+    expires_at?: string;
+    revoked_at?: string | null;
+    used_at?: string | null;
+    created_at: string;
+  }>;
+  return rows.map((r) => ({
+    kiosk_id: r.credential_id,
+    name: null,
+    site_id: r.relay_id ?? "",
+    event_id: r.event_id,
+    station_id: r.station_id,
+    status: r.revoked_at || r.used_at ? "inactive" : "active",
+    token_preview: r.token_preview ?? null,
+    last_regenerated_at: r.created_at,
+    created_at: r.created_at,
+  }));
+}
+
+export async function getKiosk(adminApiKey: string, kioskId: string): Promise<KioskRecord> {
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials?include_expired=true`, {
+    headers: adminHeaders(adminApiKey),
+  });
+  if (!response.ok) throw new Error(`Get kiosk failed: ${response.status}`);
+  const rows = (await response.json()) as Array<{
+    credential_id: string;
+    relay_id?: string | null;
+    station_id: string;
+    event_id: string;
+    token_preview?: string | null;
+    revoked_at?: string | null;
+    used_at?: string | null;
+    created_at: string;
+  }>;
+  const r = rows.find((row) => row.credential_id === kioskId);
+  if (!r) throw new Error(`Get kiosk failed: not found`);
+  return {
+    kiosk_id: r.credential_id,
+    name: null,
+    site_id: r.relay_id ?? "",
+    event_id: r.event_id,
+    station_id: r.station_id,
+    status: r.revoked_at || r.used_at ? "inactive" : "active",
+    token_preview: r.token_preview ?? null,
+    last_regenerated_at: r.created_at,
+    created_at: r.created_at,
+  } as KioskRecord;
+}
+
+export async function regenerateKioskQR(adminApiKey: string, kioskId: string, actor = "operator-ui"): Promise<RegenerateKioskQRResponse> {
+  // The backend models kiosk QR as bootstrap credentials. To "regenerate" we create a new
+  // bootstrap credential for the same event/station and return the signed token once.
+  const existing = await getKiosk(adminApiKey, kioskId);
+  const body = {
+    event_id: existing.event_id,
+    station_id: existing.station_id ?? "",
+    actor,
+    mode: "reusable_with_expiry",
+    expires_minutes: 60,
+  };
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+    method: "POST",
+    headers: adminHeaders(adminApiKey, true),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Regenerate kiosk QR failed: ${response.status}`);
+  }
+  const created = await response.json();
+  return { kiosk_id: created.credential_id, token: created.signed_token, token_preview: created.token_preview, created_at: created.created_at } as RegenerateKioskQRResponse;
+}
+
+export async function setKioskQRActive(adminApiKey: string, kioskId: string, active: boolean, actor = "operator-ui"): Promise<KioskRecord> {
+  if (!active) {
+    // revoke the bootstrap credential
+    const response = await fetch(`${API_BASE}/admin/bootstrap-credentials/${encodeURIComponent(kioskId)}/revoke?actor=${encodeURIComponent(actor)}`, {
+      method: "POST",
+      headers: adminHeaders(adminApiKey),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { detail?: string }).detail ?? `Revoke kiosk QR failed: ${response.status}`);
+    }
+    const r = await response.json();
+    return {
+      kiosk_id: r.credential_id,
+      name: null,
+      site_id: r.relay_id ?? "",
+      event_id: r.event_id,
+      station_id: r.station_id,
+      status: r.revoked_at ? "inactive" : "active",
+      token_preview: r.token_preview ?? null,
+      last_regenerated_at: r.created_at,
+      created_at: r.created_at,
+    } as KioskRecord;
+  }
+
+  // activating: create a new bootstrap credential for this kiosk's event/station
+  const existing = await getKiosk(adminApiKey, kioskId);
+  const createResp = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+    method: "POST",
+    headers: adminHeaders(adminApiKey, true),
+    body: JSON.stringify({ event_id: existing.event_id, station_id: existing.station_id ?? "", actor, mode: "reusable_with_expiry", expires_minutes: 60 }),
+  });
+  if (!createResp.ok) {
+    const err = await createResp.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Activate kiosk failed: ${createResp.status}`);
+  }
+  const created = await createResp.json();
+  return {
+    kiosk_id: created.credential_id,
+    name: null,
+    site_id: created.relay_id ?? "",
+    event_id: created.event_id,
+    station_id: created.station_id,
+    status: created.revoked_at ? "inactive" : "active",
+    token_preview: created.token_preview ?? null,
+    last_regenerated_at: created.created_at,
+    created_at: created.created_at,
+  } as KioskRecord;
+}
+
+// Create a new kiosk-like bootstrap credential and return the created token (one-time visible)
+export async function createKiosk(
+  adminApiKey: string,
+  params: { event_id: string; station_id: string; actor?: string; mode?: "one_time" | "reusable_with_expiry"; expires_minutes?: number; relay_id?: string | null },
+): Promise<RegenerateKioskQRResponse> {
+  const body = {
+    event_id: params.event_id,
+    station_id: params.station_id,
+    actor: params.actor ?? "operator-ui",
+    mode: params.mode ?? "reusable_with_expiry",
+    expires_minutes: params.expires_minutes ?? 60,
+    relay_id: params.relay_id ?? null,
+  };
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+    method: "POST",
+    headers: adminHeaders(adminApiKey, true),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail ?? `Create kiosk failed: ${response.status}`);
+  }
+  const created = await response.json();
+  return { kiosk_id: created.credential_id, token: created.signed_token, token_preview: created.token_preview, created_at: created.created_at } as RegenerateKioskQRResponse;
+}

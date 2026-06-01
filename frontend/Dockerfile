@@ -5,7 +5,8 @@ WORKDIR /app
 RUN apk upgrade --no-cache
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# use npm install in Docker build to be robust when lockfile differs in CI/local
+RUN npm install --legacy-peer-deps
 
 COPY . ./
 

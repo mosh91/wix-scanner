@@ -36,4 +36,5 @@ def make_engine(url: str, **kwargs: object) -> Engine:
 
 def make_session_factory(engine: Engine):  # type: ignore[return]
     """Return a :class:`~sqlalchemy.orm.sessionmaker` bound to *engine*."""
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    # Keep objects usable after commit by disabling expire_on_commit.
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

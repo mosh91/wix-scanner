@@ -1,10 +1,11 @@
 """Admin endpoints for edge relay management and bootstrap credential issuance (P2-US-09)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+import logging
 from app.services.relay_registry import (
     BootstrapMode,
     RelayStatus,
@@ -12,6 +13,18 @@ from app.services.relay_registry import (
 )
 
 router = APIRouter(prefix="/admin")
+
+
+@router.get(
+    "/admin-api-key",
+    summary="Return admin API key (development only)",
+)
+def get_admin_api_key(request: Request) -> dict:
+    settings = get_settings()
+    # Expose the admin API key only in development to avoid accidental leaks.
+    if settings.environment != "development":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return {"admin_api_key": settings.admin_api_key}
 
 
 # ---------------------------------------------------------------------------
@@ -265,20 +278,40 @@ def create_bootstrap_credential(
 ) -> CreateBootstrapCredentialResponse:
     _require_admin(authorization)
     svc = get_relay_registry_service()
-    record, generated = svc.create_bootstrap_credential(
-        event_id=body.event_id,
-        station_id=body.station_id,
-        actor=body.actor,
-        mode=body.mode,
-        expires_minutes=body.expires_minutes,
-        relay_id=body.relay_id,
-        door_id=body.door_id,
-    )
-    return CreateBootstrapCredentialResponse(
-        **vars(record),
-        signed_token=generated.signed_token,
-        bootstrap_url=generated.bootstrap_url,
-    )
+    try:
+        record, generated = svc.create_bootstrap_credential(
+            event_id=body.event_id,
+            station_id=body.station_id,
+            actor=body.actor,
+            mode=body.mode,
+            expires_minutes=body.expires_minutes,
+            relay_id=body.relay_id,
+            door_id=body.door_id,
+        )
+    except Exception as exc:  # pragma: no cover - defensive logging for runtime
+        logging.exception("Failed to create bootstrap credential")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Build a safe response dict with primitive types to avoid serialization surprises.
+    resp = {
+        "credential_id": str(record.credential_id),
+        "relay_id": record.relay_id,
+        "station_id": record.station_id,
+        "event_id": record.event_id,
+        "door_id": record.door_id,
+        "token_preview": record.token_preview,
+        "mode": record.mode,
+        "expires_at": record.expires_at or "",
+        "revoked_at": record.revoked_at,
+        "revoked_by": record.revoked_by,
+        "used_at": record.used_at,
+        "used_by": record.used_by,
+        "created_at": record.created_at or "",
+        "created_by_actor": record.created_by_actor,
+        "signed_token": generated.signed_token,
+        "bootstrap_url": generated.bootstrap_url,
+    }
+    return CreateBootstrapCredentialResponse(**resp)
 
 
 @router.post(

@@ -1,3 +1,4 @@
+import KioskQRSection from "../components/KioskQRSection";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
@@ -75,7 +76,7 @@ import {
   type WebhookDeliveryRecord,
 } from "@/services/scannerApi";
 
-type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "secret-rotation" | "relay-management";
+type HomeTab = "dashboard" | "integrations" | "deliveries" | "credentials" | "auth-settings" | "api-key-management" | "readiness" | "sync-controls" | "reconciliation" | "secret-rotation" | "relay-management" | "kiosk-qr";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -858,7 +859,7 @@ export default function HomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card p-2">
-        {(["integrations", "deliveries", "readiness", "sync-controls", "reconciliation", "credentials", "auth-settings", "api-key-management", "relay-management", "secret-rotation"] as HomeTab[]).map((tab) => (
+        {(["integrations", "deliveries", "readiness", "sync-controls", "reconciliation", "credentials", "auth-settings", "api-key-management", "relay-management", "secret-rotation", "kiosk-qr"] as HomeTab[]).map((tab) => (
           <Button
             key={tab}
             variant={activeTab === tab ? "default" : "ghost"}
@@ -869,6 +870,14 @@ export default function HomePage() {
           </Button>
         ))}
       </div>
+
+      {activeTab === "kiosk-qr" ? (
+        // Lazy render kiosk QR section
+        <div className="mt-4">
+          {/* Import placed below to avoid top-level import churn in this patch */}
+          <KioskQRSection />
+        </div>
+      ) : null}
 
       {activeTab === "integrations" ? (
         <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
