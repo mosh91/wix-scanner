@@ -276,8 +276,32 @@ class EncryptedDatabaseCredentialProvider(CredentialProvider):
         return migrated
 
 
+class OAuthCredentialProvider(CredentialProvider):
+    """Credential provider that delegates to WixOAuthService for auto-refreshed tokens."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def get_wix_api_token(self) -> str | None:
+        from app.services.wix_oauth import get_wix_oauth_service  # avoid circular import
+
+        service = get_wix_oauth_service()
+        if not service.is_configured():
+            logger.debug("credentials.provider.oauth.not_configured")
+            return None
+        try:
+            token = service.get_access_token()
+            logger.debug("credentials.provider.oauth.loaded", extra={"preview": redact_secret(token)})
+            return token
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("credentials.provider.oauth.failed", extra={"error": str(exc)})
+            return None
+
+
 def get_credential_provider(settings: Settings) -> CredentialProvider:
     if settings.credential_provider_mode == "db":
         return EncryptedDatabaseCredentialProvider(settings, _factory_token=_FACTORY_SENTINEL)
+    if settings.credential_provider_mode == "oauth":
+        return OAuthCredentialProvider(settings)
     return EnvironmentCredentialProvider(settings)
 

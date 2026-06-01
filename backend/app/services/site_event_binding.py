@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+import httpx
 from sqlalchemy import Column, String, Integer, Text, UniqueConstraint
 
 from app.core.config import Settings, get_settings
 from app.db import make_engine, make_session_factory
+
+logger = logging.getLogger(__name__)
 
 BindingStatus = Literal["pending", "verified", "unverified", "revoked"]
 AppInstallationStatus = Literal["pending_install", "installed", "uninstalled", "failed"]
@@ -50,11 +54,79 @@ class WixBindingVerifier:
                 error=error,
             )
 
+        # Live mode: call Wix Events API to verify the event exists and the
+        # API key is authorised for the given site.
+        from app.services.credentials import get_credential_provider
+        provider = get_credential_provider(self._settings)
+        wix_api_token = provider.get_wix_api_token()
+        if not wix_api_token:
+            return WixBindingVerificationResult(
+                site_exists=False,
+                event_exists=False,
+                app_installed=False,
+                error="Wix API token not configured.",
+            )
+
+        base_url = self._settings.wix_base_url.rstrip("/")
+        url = f"{base_url}/events/v1/events/{wix_event_id}"
+        headers = {
+            "Authorization": f"Bearer {wix_api_token}",
+            "wix-site-id": wix_site_id,
+        }
+        timeout = getattr(self._settings, "wix_timeout_ms", 5000) / 1000.0
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.get(url, headers=headers)
+        except httpx.TimeoutException as exc:
+            logger.warning("Wix API timeout verifying event %s: %s", wix_event_id, exc)
+            return WixBindingVerificationResult(
+                site_exists=False,
+                event_exists=False,
+                app_installed=False,
+                error=f"Wix API request timed out: {type(exc).__name__}",
+            )
+        except httpx.ConnectError as exc:
+            logger.warning("Wix API connection error verifying event %s: %s", wix_event_id, exc)
+            return WixBindingVerificationResult(
+                site_exists=False,
+                event_exists=False,
+                app_installed=False,
+                error=f"Wix API unreachable: {type(exc).__name__}",
+            )
+
+        if response.status_code == 200:
+            return WixBindingVerificationResult(
+                site_exists=True,
+                event_exists=True,
+                app_installed=True,
+            )
+        if response.status_code == 404:
+            return WixBindingVerificationResult(
+                site_exists=True,
+                event_exists=False,
+                app_installed=False,
+                error="Wix event not found (HTTP 404).",
+            )
+        if response.status_code in {401, 403}:
+            return WixBindingVerificationResult(
+                site_exists=False,
+                event_exists=False,
+                app_installed=False,
+                error=(
+                    f"Wix auth failed (HTTP {response.status_code}): "
+                    "app may not be installed on this site."
+                ),
+            )
+        logger.warning(
+            "Unexpected Wix API response %s verifying event %s",
+            response.status_code,
+            wix_event_id,
+        )
         return WixBindingVerificationResult(
             site_exists=False,
             event_exists=False,
             app_installed=False,
-            error="Live Wix site/event verification is not configured.",
+            error=f"Unexpected Wix API response: HTTP {response.status_code}.",
         )
 
 

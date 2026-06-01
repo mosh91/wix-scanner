@@ -17,7 +17,11 @@ class Settings(BaseSettings):
     wix_base_url: str = "https://www.wixapis.com"
     wix_checkin_path: str = "/events/v1/tickets/check-in"
     wix_api_token: str = ""
-    credential_provider_mode: Literal["env", "db"] = "env"
+    # Wix OAuth app credentials (used when credential_provider_mode = "oauth")
+    wix_app_id: str = ""
+    wix_app_secret: str = ""
+    wix_app_instance_id: str = ""
+    credential_provider_mode: Literal["env", "db", "oauth"] = "env"
     credential_db_path: str = "./data/credentials.db"
     credential_key_version: str = "v1"
     credential_encryption_key: str = "dev-credential-key-must-change"

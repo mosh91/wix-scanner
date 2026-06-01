@@ -309,6 +309,21 @@ class AuthSettingsService:
         return "healthy"
 
     def get_token_status(self) -> AuthTokenStatusRecord:
+        if self._settings.credential_provider_mode == "oauth":
+            from app.services.wix_oauth import get_wix_oauth_service  # avoid circular import
+
+            oauth_status = get_wix_oauth_service().get_token_status()
+            return AuthTokenStatusRecord(
+                auth_mode="oauth",
+                token_status=str(oauth_status["status"]),
+                credential_id=None,
+                profile_name="wix-app-credentials",
+                expires_at=str(oauth_status["expires_at"]) if oauth_status["expires_at"] else None,
+                last_refresh_at=str(oauth_status["last_refresh_at"]) if oauth_status["last_refresh_at"] else None,
+                last_tested_at=None,
+                last_error=str(oauth_status["last_error"]) if oauth_status["last_error"] else None,
+            )
+
         credential = self._select_active_oauth_credential()
         if credential is None:
             return AuthTokenStatusRecord(
@@ -335,6 +350,26 @@ class AuthSettingsService:
         )
 
     def test_connection(self) -> AuthTokenStatusRecord:
+        if self._settings.credential_provider_mode == "oauth":
+            from app.services.wix_oauth import get_wix_oauth_service  # avoid circular import
+
+            if self._settings.wix_mock_mode:
+                return self.get_token_status()
+
+            token = get_wix_oauth_service().get_access_token()
+            url = f"{self._settings.wix_base_url.rstrip('/')}/apps/v1/instance"
+            headers = {"Authorization": f"Bearer {token}"}
+            try:
+                with httpx.Client(timeout=self._settings.wix_timeout_ms / 1000.0) as client:
+                    response = client.get(url, headers=headers)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"Connection test failed: {exc}") from exc
+
+            if response.status_code >= 400:
+                raise RuntimeError(f"Connection test failed with status {response.status_code}.")
+
+            return self.get_token_status()
+
         credential = self._select_active_oauth_credential()
         if credential is None:
             raise RuntimeError("No active OAuth credential found. Create and activate one before testing.")
@@ -371,6 +406,15 @@ class AuthSettingsService:
         return self.get_token_status()
 
     def refresh_token(self, *, actor: str) -> AuthTokenStatusRecord:
+        if self._settings.credential_provider_mode == "oauth":
+            from app.services.wix_oauth import get_wix_oauth_service  # avoid circular import
+
+            try:
+                get_wix_oauth_service().force_refresh()
+            except Exception as exc:
+                raise RuntimeError(f"OAuth token refresh failed: {exc}") from exc
+            return self.get_token_status()
+
         credential = self._select_active_oauth_credential()
         if credential is None:
             raise RuntimeError("No active OAuth credential found. Create and activate one before refreshing.")

@@ -87,8 +87,20 @@ def create_site_event_binding(request: SiteEventBindingCreateRequest) -> SiteEve
             created_by_actor=request.actor,
             verify_immediately=request.verify_immediately,
         )
+    except ValueError as exc:
+        msg = str(exc)
+        # Event not found → guide caller to create it first
+        if "not found" in msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=msg + " Use POST /api/admin/event-blocks/events to register it.",
+            ) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg) from exc
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        from sqlalchemy.exc import IntegrityError
+        if isinstance(exc, IntegrityError):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Binding already exists.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _to_binding_response(record)
 
 

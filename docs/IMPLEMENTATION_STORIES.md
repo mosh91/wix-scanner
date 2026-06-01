@@ -821,6 +821,43 @@ Acceptance criteria:
 
 ---
 
+### Story P1-US-16: Wix OAuth client credentials auto-refresh
+Status: `Done`
+
+User story:
+As a platform engineer, I want the backend to automatically obtain and renew short-lived Wix OAuth Bearer tokens using App ID + App Secret + Instance ID so integrations never fail due to expired tokens.
+
+Context:
+Wix issues short-lived access tokens (~5 minutes) from the `POST /oauth2/token` endpoint using client credentials flow. The previous `refresh_token()` implementation in `auth_settings.py` only advanced the credential's expiry timestamp locally — it never called Wix. This story implements the real OAuth refresh cycle and wires it into the credential provider abstraction.
+
+Tasks:
+- Add `wix_app_id`, `wix_app_secret`, and `wix_app_instance_id` settings (env vars `WIX_SCANNER_WIX_APP_ID`, `WIX_SCANNER_WIX_APP_SECRET`, `WIX_SCANNER_WIX_APP_INSTANCE_ID`).
+- Add `credential_provider_mode = "oauth"` option alongside existing `env` and `db` modes.
+- Create `backend/app/services/wix_oauth.py` with thread-safe `WixOAuthService`:
+  - In-memory token cache with expiry.
+  - `get_access_token()`: returns cached token; refreshes when ≤60 s remain.
+  - `force_refresh()`: always fetches a new token from Wix.
+  - `is_configured()`: returns True only when all three app credentials are set.
+  - `get_token_status()`: returns status dict for UI polling.
+  - Calls `POST https://www.wixapis.com/oauth2/token` with `grant_type=client_credentials`, `client_id`, `client_secret`, `instance_id`.
+  - In mock mode: returns synthetic token without calling Wix.
+- Add `OAuthCredentialProvider` to `credentials.py`; `get_wix_api_token()` delegates to `WixOAuthService.get_access_token()`.
+- Update `get_credential_provider()` to return `OAuthCredentialProvider` when mode is `oauth`.
+- Update `auth_settings.py` `get_token_status()` and `refresh_token()` to use `WixOAuthService` directly when `credential_provider_mode == "oauth"`.
+- Add `_oauth_token_refresh_loop` background task in `main.py` (checks every 60 s; calls `get_access_token()` which auto-refreshes when near expiry).
+- Add `WIX_SCANNER_WIX_APP_ID`, `WIX_SCANNER_WIX_APP_SECRET`, `WIX_SCANNER_WIX_APP_INSTANCE_ID`, `WIX_SCANNER_CREDENTIAL_PROVIDER_MODE=oauth` to `.env` as commented placeholders.
+
+Acceptance criteria:
+- Given `credential_provider_mode=oauth` and valid app credentials, when any Wix API call is made, then the Bearer token is obtained automatically from Wix OAuth without operator intervention.
+- Given a token is cached and has >60 s remaining, when `get_access_token()` is called, then no HTTP request is made (token reused).
+- Given a token is within 60 s of expiry, when `get_access_token()` is called, then a new token is fetched from Wix and cached.
+- Given `force_refresh()` is called, then a new token is always fetched regardless of cache state.
+- Given `wix_mock_mode=true`, when `get_access_token()` is called, then a synthetic token is returned and no HTTP call is made.
+- Given `credential_provider_mode=oauth` is set, when the auth-settings screen requests token status, then `token_status`, `expires_at`, and `last_refresh_at` reflect the OAuth service state.
+- Given a manual refresh is triggered from the UI, when `POST /api/admin/auth-settings/token/refresh` is called, then `WixOAuthService.force_refresh()` is invoked and returns updated status.
+
+---
+
 ## Phase 2: Event Configuration and Credential Management
 
 ### Story P2-US-01: Event and block configuration CRUD
@@ -1427,7 +1464,8 @@ Acceptance criteria:
 16. **P1-US-13 (NEW: Credential lifecycle & auth mode)**
 17. **P1-US-14 (NEW: Event readiness gate)**
 18. **P1-US-15 (NEW: Reconciliation contract)**
-19. P2-US-01
+19. **P1-US-16 (NEW: Wix OAuth auto-refresh)**
+20. P2-US-01
 20. P2-US-02
 21. P2-US-04
 22. P2-US-05

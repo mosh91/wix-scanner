@@ -5,7 +5,7 @@ services:
     container_name: wix_scanner_backend
     restart: unless-stopped
     env_file:
-      - ../../backend/.env.example
+      - ../../backend/.env
     environment:
       WIX_SCANNER_ENVIRONMENT: development
       WIX_SCANNER_CORS_ORIGINS: '["http://localhost:5173"]'

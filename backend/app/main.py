@@ -20,6 +20,7 @@ from app.services.sync_controls import WixSyncControlService, get_sync_control_s
 from app.services.worker_health import get_worker_health_service
 from app.api.routes.checkins import set_scan_idempotency_service
 from app.services.reset_audit import ResetAuditService, set_reset_audit_service
+from app.services.wix_oauth import WixOAuthService, get_wix_oauth_service, set_wix_oauth_service
 
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,18 @@ async def _manifest_sync_loop() -> None:
         worker_health.pulse("manifest_sync_worker")
 
 
+async def _oauth_token_refresh_loop() -> None:
+    """Proactively keep the Wix OAuth token fresh (checks every 60 s, refreshes when ≤60 s remain)."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            service = get_wix_oauth_service()
+            if service.is_configured():
+                service.get_access_token()  # auto-refreshes when near expiry
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("oauth.background_refresh.failed", extra={"error": str(exc)})
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     # Initialize scan idempotency service
@@ -80,15 +93,28 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     set_sync_control_service(sync_controls_svc)
     startup_logger.info("sync_controls initialized with database_url=%s", settings.database_url)
 
+    # Initialize Wix OAuth service (used when credential_provider_mode = "oauth")
+    oauth_svc = WixOAuthService(settings)
+    set_wix_oauth_service(oauth_svc)
+    startup_logger.info(
+        "wix_oauth initialized (configured=%s)",
+        oauth_svc.is_configured(),
+    )
+
     cleanup_task = asyncio.create_task(_cleanup_loop())
     queue_worker_task = asyncio.create_task(_offline_queue_worker_loop())
     manifest_sync_task = asyncio.create_task(_manifest_sync_loop())
+    oauth_refresh_task: asyncio.Task | None = None
+    if settings.credential_provider_mode == "oauth":
+        oauth_refresh_task = asyncio.create_task(_oauth_token_refresh_loop())
     try:
         yield
     finally:
         cleanup_task.cancel()
         queue_worker_task.cancel()
         manifest_sync_task.cancel()
+        if oauth_refresh_task is not None:
+            oauth_refresh_task.cancel()
         try:
             await cleanup_task
         except asyncio.CancelledError:
@@ -101,6 +127,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await manifest_sync_task
         except asyncio.CancelledError:
             pass
+        if oauth_refresh_task is not None:
+            try:
+                await oauth_refresh_task
+            except asyncio.CancelledError:
+                pass
 
 
 settings = get_settings()
