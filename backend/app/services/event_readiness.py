@@ -74,8 +74,8 @@ class EventReadinessService:
             binding_id=binding.binding_id,
             wix_site_id=binding.wix_site_id,
             wix_event_id=binding.wix_event_id,
-            credential_profile_id=binding.credential_profile_id,
-            sync_policy_profile_id=binding.sync_policy_profile_id,
+            binding_verified_at=binding.binding_verified_at,
+            app_installation_status=binding.app_installation_status,
         )
 
     def _evaluate_credentials(self) -> ReadinessComponentStatus:

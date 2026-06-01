@@ -1,52 +1,135 @@
--- Wix Scanner canonical PostgreSQL schema
--- Source: README + IMPLEMENTATION_STORIES
--- Target: PostgreSQL 15+
---
--- Phase 1 Wix Integration Additions (New):
--- - wix_site_event_binding: Verifies event is bound to correct Wix site and app is installed (P1-US-11)
--- - wix_app_scope: Tracks required OAuth scopes and verification status (P1-US-12)
--- - credential_lifecycle_state enum: Explicit credential state machine (P1-US-13)
--- - event_readiness_check: Pre-event validation gate covering binding, credentials, scopes, manifest, cache, worker (P1-US-14)
--- - reconciliation_state enum + enhanced reconciliation tables: Formal drift contract (P1-US-15)
+"""baseline – full initial schema from docs/DB_SCHEMA.sql
 
+Revision ID: 0001
+Revises:
+Create Date: 2026-05-31
+
+This migration captures the schema as it existed before Alembic was introduced.
+All statements are wrapped in IF NOT EXISTS / DO $$ guards so that running
+``alembic upgrade head`` against an already-bootstrapped database is safe.
+
+To mark an existing database as already at this revision without executing the
+DDL, run:
+
+    alembic stamp 0001
+"""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy import text
+
+revision: str = "0001"
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+# ---------------------------------------------------------------------------
+# Helper: execute raw SQL, tolerating "already exists" errors so the migration
+# stays idempotent when applied to an already-bootstrapped database.
+# ---------------------------------------------------------------------------
+
+_DDL = """
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ===== Enums =====
-CREATE TYPE user_role AS ENUM ('operator', 'admin', 'security_admin', 'system');
-CREATE TYPE event_status AS ENUM ('draft', 'active', 'archived');
-CREATE TYPE auth_mode AS ENUM ('oauth_token', 'api_key', 'relay_secret');
-CREATE TYPE checkin_result AS ENUM (
-  'checked_in',
-  'already_checked_in',
-  'queued_offline',
-  'invalid_ticket',
-  'outside_block_window',
-  'error'
-);
-CREATE TYPE scan_source AS ENUM ('operator_ui', 'manual_override', 'relay', 'wix_mobile', 'reconciliation');
-CREATE TYPE scan_processing_status AS ENUM ('accepted', 'rejected', 'queued', 'synced', 'failed');
-CREATE TYPE queue_state AS ENUM ('pending', 'in_progress', 'synced', 'dead_letter', 'cancelled');
-CREATE TYPE attempt_channel AS ENUM ('live_api', 'worker_retry', 'reconciliation');
-CREATE TYPE relay_status AS ENUM ('enabled', 'disabled', 'degraded');
-CREATE TYPE run_status AS ENUM ('running', 'completed', 'failed');
-CREATE TYPE scanner_health AS ENUM ('connected', 'disconnected', 'unresponsive', 'unknown');
-CREATE TYPE backend_health AS ENUM ('green', 'yellow', 'red');
-CREATE TYPE ticket_manifest_state AS ENUM ('active', 'checked_in', 'cancelled', 'void', 'stale');
-CREATE TYPE credential_audit_action AS ENUM ('create', 'update', 'rotate', 'test', 'refresh', 'read_denied');
-CREATE TYPE action_outcome AS ENUM ('success', 'failure');
--- New: Credential lifecycle states (P1-US-13)
-CREATE TYPE credential_lifecycle_state AS ENUM ('created', 'validated', 'active', 'expiring_soon', 'rotation_pending', 'revoked', 'failed');
--- New: Binding verification status (P1-US-11)
-CREATE TYPE binding_status AS ENUM ('pending', 'verified', 'unverified', 'revoked');
--- New: App installation status (P1-US-11)
-CREATE TYPE app_installation_status AS ENUM ('pending_install', 'installed', 'uninstalled', 'failed');
--- New: Event readiness status (P1-US-14)
-CREATE TYPE event_readiness_status AS ENUM ('ready', 'degraded', 'critical');
--- New: Reconciliation state machine (P1-US-15)
-CREATE TYPE reconciliation_state AS ENUM ('in_sync', 'local_pending', 'local_only', 'wix_only', 'conflict');
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('operator', 'admin', 'security_admin', 'system');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE event_status AS ENUM ('draft', 'active', 'archived');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE auth_mode AS ENUM ('oauth_token', 'api_key', 'relay_secret');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE checkin_result AS ENUM (
+    'checked_in',
+    'already_checked_in',
+    'queued_offline',
+    'invalid_ticket',
+    'outside_block_window',
+    'error'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE scan_source AS ENUM ('operator_ui', 'manual_override', 'relay', 'wix_mobile', 'reconciliation');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE scan_processing_status AS ENUM ('accepted', 'rejected', 'queued', 'synced', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE queue_state AS ENUM ('pending', 'in_progress', 'synced', 'dead_letter', 'cancelled');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE attempt_channel AS ENUM ('live_api', 'worker_retry', 'reconciliation');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE relay_status AS ENUM ('enabled', 'disabled', 'degraded');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE run_status AS ENUM ('running', 'completed', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE scanner_health AS ENUM ('connected', 'disconnected', 'unresponsive', 'unknown');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE backend_health AS ENUM ('green', 'yellow', 'red');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE ticket_manifest_state AS ENUM ('active', 'checked_in', 'cancelled', 'void', 'stale');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE credential_audit_action AS ENUM ('create', 'update', 'rotate', 'test', 'refresh', 'read_denied');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE action_outcome AS ENUM ('success', 'failure');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE credential_lifecycle_state AS ENUM (
+    'created', 'validated', 'active', 'expiring_soon',
+    'rotation_pending', 'revoked', 'failed'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE binding_status AS ENUM ('pending', 'verified', 'unverified', 'revoked');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE app_installation_status AS ENUM (
+    'pending_install', 'installed', 'uninstalled', 'failed'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE event_readiness_status AS ENUM ('ready', 'degraded', 'critical');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE reconciliation_state AS ENUM (
+    'in_sync', 'local_pending', 'local_only', 'wix_only', 'conflict'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ===== Users / RBAC =====
-CREATE TABLE app_user (
+CREATE TABLE IF NOT EXISTS app_user (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   external_subject TEXT UNIQUE,
   email TEXT UNIQUE,
@@ -58,7 +141,7 @@ CREATE TABLE app_user (
 );
 
 -- ===== Event configuration =====
-CREATE TABLE event (
+CREATE TABLE IF NOT EXISTS event (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   wix_event_id TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
@@ -74,7 +157,7 @@ CREATE TABLE event (
   CONSTRAINT event_sync_interval_seconds_chk CHECK (sync_interval_seconds BETWEEN 30 AND 900)
 );
 
-CREATE TABLE event_block (
+CREATE TABLE IF NOT EXISTS event_block (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   block_code TEXT NOT NULL,
@@ -94,7 +177,7 @@ CREATE TABLE event_block (
   CONSTRAINT event_block_unique_code UNIQUE (event_id, block_code)
 );
 
-CREATE TABLE event_config_version (
+CREATE TABLE IF NOT EXISTS event_config_version (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   version_number INTEGER NOT NULL,
@@ -104,8 +187,8 @@ CREATE TABLE event_config_version (
   CONSTRAINT event_config_version_unique UNIQUE (event_id, version_number)
 );
 
--- ===== Wix site-event binding verification (P1-US-11) =====
-CREATE TABLE wix_site_event_binding (
+-- ===== Wix site-event binding verification =====
+CREATE TABLE IF NOT EXISTS wix_site_event_binding (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   wix_site_id TEXT NOT NULL,
@@ -124,11 +207,11 @@ CREATE TABLE wix_site_event_binding (
   CONSTRAINT wix_binding_unique_event UNIQUE (event_id, wix_site_id, wix_event_id)
 );
 
-CREATE INDEX idx_wix_site_event_binding_event_status
+CREATE INDEX IF NOT EXISTS idx_wix_site_event_binding_event_status
   ON wix_site_event_binding (event_id, status);
 
--- ===== Wix app scope verification (P1-US-12) =====
-CREATE TABLE wix_app_scope (
+-- ===== Wix app scope verification =====
+CREATE TABLE IF NOT EXISTS wix_app_scope (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   binding_id UUID NOT NULL REFERENCES wix_site_event_binding(id) ON DELETE CASCADE,
   scope TEXT NOT NULL,
@@ -141,10 +224,10 @@ CREATE TABLE wix_app_scope (
   CONSTRAINT wix_app_scope_unique UNIQUE (binding_id, scope)
 );
 
-CREATE INDEX idx_wix_app_scope_binding_verified
+CREATE INDEX IF NOT EXISTS idx_wix_app_scope_binding_verified
   ON wix_app_scope (binding_id, verified_at DESC);
 
-CREATE TABLE event_ticket_manifest (
+CREATE TABLE IF NOT EXISTS event_ticket_manifest (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   ticket_number TEXT NOT NULL,
@@ -160,11 +243,13 @@ CREATE TABLE event_ticket_manifest (
   CONSTRAINT event_ticket_manifest_ticket_not_blank_chk CHECK (length(trim(ticket_number)) > 0)
 );
 
-CREATE INDEX idx_event_ticket_manifest_event_state ON event_ticket_manifest (event_id, manifest_state);
-CREATE INDEX idx_event_ticket_manifest_event_updated_at ON event_ticket_manifest (event_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_event_ticket_manifest_event_state
+  ON event_ticket_manifest (event_id, manifest_state);
+CREATE INDEX IF NOT EXISTS idx_event_ticket_manifest_event_updated_at
+  ON event_ticket_manifest (event_id, updated_at DESC);
 
 -- ===== Scanner sessions and scan events =====
-CREATE TABLE scan_session (
+CREATE TABLE IF NOT EXISTS scan_session (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID REFERENCES event(id),
   operator_id UUID REFERENCES app_user(id),
@@ -176,7 +261,7 @@ CREATE TABLE scan_session (
   ended_at TIMESTAMPTZ
 );
 
-CREATE TABLE scan_event (
+CREATE TABLE IF NOT EXISTS scan_event (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scan_event_id UUID NOT NULL UNIQUE,
   event_id UUID NOT NULL REFERENCES event(id),
@@ -193,11 +278,11 @@ CREATE TABLE scan_event (
   CONSTRAINT scan_event_ticket_not_blank_chk CHECK (length(trim(ticket_number)) > 0)
 );
 
-CREATE INDEX idx_scan_event_event_ticket ON scan_event (event_id, ticket_number);
-CREATE INDEX idx_scan_event_received_at ON scan_event (received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scan_event_event_ticket ON scan_event (event_id, ticket_number);
+CREATE INDEX IF NOT EXISTS idx_scan_event_received_at ON scan_event (received_at DESC);
 
 -- ===== Check-in state and attempts =====
-CREATE TABLE checkin_record (
+CREATE TABLE IF NOT EXISTS checkin_record (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id),
   ticket_number TEXT NOT NULL,
@@ -215,10 +300,10 @@ CREATE TABLE checkin_record (
   CONSTRAINT checkin_record_unique_event_ticket UNIQUE (event_id, ticket_number)
 );
 
-CREATE INDEX idx_checkin_record_event_result ON checkin_record (event_id, result);
-CREATE INDEX idx_checkin_record_updated_at ON checkin_record (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_checkin_record_event_result ON checkin_record (event_id, result);
+CREATE INDEX IF NOT EXISTS idx_checkin_record_updated_at ON checkin_record (updated_at DESC);
 
-CREATE TABLE checkin_attempt (
+CREATE TABLE IF NOT EXISTS checkin_attempt (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scan_event_id UUID NOT NULL REFERENCES scan_event(id) ON DELETE CASCADE,
   channel attempt_channel NOT NULL,
@@ -233,11 +318,11 @@ CREATE TABLE checkin_attempt (
   CONSTRAINT checkin_attempt_number_chk CHECK (attempt_number > 0)
 );
 
-CREATE UNIQUE INDEX uq_checkin_attempt_scan_event_attempt
+CREATE UNIQUE INDEX IF NOT EXISTS uq_checkin_attempt_scan_event_attempt
   ON checkin_attempt (scan_event_id, attempt_number);
 
--- ===== Offline queue / worker visibility =====
-CREATE TABLE queue_item (
+-- ===== Offline queue =====
+CREATE TABLE IF NOT EXISTS queue_item (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scan_event_id UUID NOT NULL UNIQUE REFERENCES scan_event(id) ON DELETE CASCADE,
   state queue_state NOT NULL DEFAULT 'pending',
@@ -250,10 +335,10 @@ CREATE TABLE queue_item (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_queue_item_state_next_retry ON queue_item (state, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_queue_item_state_next_retry ON queue_item (state, next_retry_at);
 
--- ===== Relay fleet and relay dedupe =====
-CREATE TABLE relay_instance (
+-- ===== Relay fleet =====
+CREATE TABLE IF NOT EXISTS relay_instance (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   relay_code TEXT NOT NULL UNIQUE,
   venue_name TEXT NOT NULL,
@@ -267,11 +352,14 @@ CREATE TABLE relay_instance (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE scan_session
-  ADD CONSTRAINT scan_session_relay_fk
-  FOREIGN KEY (relay_id) REFERENCES relay_instance(id);
+DO $$
+BEGIN
+  ALTER TABLE scan_session
+    ADD CONSTRAINT scan_session_relay_fk
+    FOREIGN KEY (relay_id) REFERENCES relay_instance(id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TABLE relay_ingest_ledger (
+CREATE TABLE IF NOT EXISTS relay_ingest_ledger (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   relay_id UUID NOT NULL REFERENCES relay_instance(id) ON DELETE CASCADE,
   scan_event_id UUID NOT NULL,
@@ -279,7 +367,7 @@ CREATE TABLE relay_ingest_ledger (
   CONSTRAINT relay_ingest_unique UNIQUE (relay_id, scan_event_id)
 );
 
-CREATE TABLE relay_heartbeat (
+CREATE TABLE IF NOT EXISTS relay_heartbeat (
   id BIGSERIAL PRIMARY KEY,
   relay_id UUID NOT NULL REFERENCES relay_instance(id) ON DELETE CASCADE,
   queue_depth INTEGER NOT NULL DEFAULT 0,
@@ -290,11 +378,11 @@ CREATE TABLE relay_heartbeat (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_relay_heartbeat_relay_recorded_at
+CREATE INDEX IF NOT EXISTS idx_relay_heartbeat_relay_recorded_at
   ON relay_heartbeat (relay_id, recorded_at DESC);
 
 -- ===== Metrics and health =====
-CREATE TABLE scan_metric (
+CREATE TABLE IF NOT EXISTS scan_metric (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scan_event_id UUID REFERENCES scan_event(id) ON DELETE SET NULL,
   session_id UUID REFERENCES scan_session(id) ON DELETE SET NULL,
@@ -310,10 +398,10 @@ CREATE TABLE scan_metric (
   CONSTRAINT scan_metric_latency_chk CHECK (response_time_ms >= 0)
 );
 
-CREATE INDEX idx_scan_metric_event_created_at ON scan_metric (event_id, created_at DESC);
-CREATE INDEX idx_scan_metric_session_created_at ON scan_metric (session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scan_metric_event_created_at ON scan_metric (event_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scan_metric_session_created_at ON scan_metric (session_id, created_at DESC);
 
-CREATE TABLE auth_health_metric (
+CREATE TABLE IF NOT EXISTS auth_health_metric (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   mode auth_mode NOT NULL,
   token_expiry_horizon_seconds INTEGER,
@@ -323,10 +411,10 @@ CREATE TABLE auth_health_metric (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_auth_health_metric_recorded_at ON auth_health_metric (recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_health_metric_recorded_at ON auth_health_metric (recorded_at DESC);
 
 -- ===== Reconciliation =====
-CREATE TABLE reconciliation_run (
+CREATE TABLE IF NOT EXISTS reconciliation_run (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   status run_status NOT NULL DEFAULT 'running',
@@ -340,7 +428,7 @@ CREATE TABLE reconciliation_run (
   notes TEXT
 );
 
-CREATE TABLE reconciliation_item (
+CREATE TABLE IF NOT EXISTS reconciliation_item (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id UUID NOT NULL REFERENCES reconciliation_run(id) ON DELETE CASCADE,
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
@@ -355,10 +443,10 @@ CREATE TABLE reconciliation_item (
   conflict_resolution_notes TEXT
 );
 
-CREATE INDEX idx_reconciliation_item_run_id ON reconciliation_item (run_id);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_item_run_id ON reconciliation_item (run_id);
 
--- ===== Event readiness gate (P1-US-14) =====
-CREATE TABLE event_readiness_check (
+-- ===== Event readiness gate =====
+CREATE TABLE IF NOT EXISTS event_readiness_check (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES event(id) ON DELETE CASCADE,
   overall_status event_readiness_status NOT NULL DEFAULT 'critical',
@@ -380,11 +468,11 @@ CREATE TABLE event_readiness_check (
   valid_until TIMESTAMPTZ
 );
 
-CREATE INDEX idx_event_readiness_check_event_checked_at
+CREATE INDEX IF NOT EXISTS idx_event_readiness_check_event_checked_at
   ON event_readiness_check (event_id, checked_at DESC);
 
-
-CREATE TABLE secret_credential (
+-- ===== Credentials =====
+CREATE TABLE IF NOT EXISTS secret_credential (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   mode auth_mode NOT NULL,
@@ -403,7 +491,7 @@ CREATE TABLE secret_credential (
   CONSTRAINT secret_credential_name_mode_active_uniq UNIQUE (name, mode, is_active)
 );
 
-CREATE TABLE credential_audit_log (
+CREATE TABLE IF NOT EXISTS credential_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   credential_id UUID REFERENCES secret_credential(id) ON DELETE SET NULL,
   action credential_audit_action NOT NULL,
@@ -414,10 +502,10 @@ CREATE TABLE credential_audit_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_credential_audit_log_created_at ON credential_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_credential_audit_log_created_at ON credential_audit_log (created_at DESC);
 
--- ===== Generic audit trail for sensitive operations =====
-CREATE TABLE audit_log (
+-- ===== Generic audit trail =====
+CREATE TABLE IF NOT EXISTS audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_id UUID REFERENCES app_user(id),
   action TEXT NOT NULL,
@@ -429,10 +517,10 @@ CREATE TABLE audit_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_log_created_at ON audit_log (created_at DESC);
-CREATE INDEX idx_audit_log_resource ON audit_log (resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log (resource_type, resource_id);
 
--- ===== Runtime tables created by backend services (SQLAlchemy) =====
+-- ===== Runtime tables managed by SQLAlchemy services =====
 
 CREATE TABLE IF NOT EXISTS scan_idempotency (
   id SERIAL PRIMARY KEY,
@@ -550,10 +638,6 @@ CREATE TABLE IF NOT EXISTS checkin_records (
   CONSTRAINT uq_checkin_records UNIQUE (event_id, ticket_number)
 );
 
--- ---------------------------------------------------------------------------
--- Event activation tracking (managed by site_event_binding service)
--- ---------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS event_activation (
   id BIGSERIAL PRIMARY KEY,
   wix_event_id VARCHAR NOT NULL UNIQUE,
@@ -565,10 +649,6 @@ CREATE TABLE IF NOT EXISTS event_activation (
   readiness_failed_checks TEXT NOT NULL DEFAULT '[]',
   readiness_recommended_actions TEXT NOT NULL DEFAULT '[]'
 );
-
--- ---------------------------------------------------------------------------
--- Auth service tables (managed by auth_settings service via create_all)
--- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS auth_token_runtime (
   credential_id VARCHAR PRIMARY KEY,
@@ -600,10 +680,6 @@ CREATE TABLE IF NOT EXISTS auth_api_key_audit (
   occurred_at VARCHAR NOT NULL
 );
 
--- ---------------------------------------------------------------------------
--- Ticket manifest sync tracking (managed by ticket_manifest service)
--- ---------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS event_manifest_sync (
   event_id VARCHAR PRIMARY KEY,
   last_known_sync_ts DOUBLE PRECISION NOT NULL,
@@ -611,3 +687,15 @@ CREATE TABLE IF NOT EXISTS event_manifest_sync (
   total_tickets INTEGER NOT NULL,
   checked_in_tickets INTEGER NOT NULL
 );
+"""
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    conn.execute(text(_DDL))
+
+
+def downgrade() -> None:
+    # Downgrade intentionally left empty for the baseline.
+    # Dropping all tables would be destructive; operators should restore from backup.
+    pass

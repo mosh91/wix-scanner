@@ -243,6 +243,14 @@ class EventBlockConfigService:
             created_at=self._now(),
         ))
 
+    def _next_version_number(self, session, event_id: str) -> int:
+        from sqlalchemy import select, func
+        latest = session.execute(
+            select(func.max(_EventConfigVersionRow.version_number))
+            .where(_EventConfigVersionRow.event_id == event_id)
+        ).scalar_one_or_none()
+        return int(latest or 0) + 1
+
     # ── Overlap detection ────────────────────────────────────────────────────
 
     def _check_overlap(
@@ -349,6 +357,7 @@ class EventBlockConfigService:
                 row.allow_block_overlap = allow_block_overlap
             row.updated_by = None  # No real user UUID
             row.updated_at = now
+            self._snapshot_event(session, event_id, self._next_version_number(session, event_id), actor)
             session.commit()
             updated = session.execute(
                 select(_EventConfigRow).where(_EventConfigRow.id == event_id)
@@ -412,6 +421,9 @@ class EventBlockConfigService:
                 updated_at=now,
             )
             session.add(block_row)
+            event_row.updated_at = now
+            event_row.updated_by = actor
+            self._snapshot_event(session, event_id, self._next_version_number(session, event_id), actor)
             session.commit()
             result = session.execute(
                 select(_EventBlockRow).where(_EventBlockRow.id == block_id)
@@ -494,6 +506,15 @@ class EventBlockConfigService:
                 block_row.is_active = is_active
             block_row.updated_at = now
             block_row.updated_by = actor
+            if event_row:
+                event_row.updated_at = now
+                event_row.updated_by = actor
+                self._snapshot_event(
+                    session,
+                    block_row.event_id,
+                    self._next_version_number(session, block_row.event_id),
+                    actor,
+                )
 
             session.commit()
             updated = session.execute(
@@ -505,7 +526,7 @@ class EventBlockConfigService:
         from sqlalchemy import select, delete
         with self._session_factory() as session:
             block_row = session.execute(
-                select(_EventBlockRow).where(_EventBlockRow.block_id == block_id)
+                select(_EventBlockRow).where(_EventBlockRow.id == block_id)
             ).scalar_one_or_none()
             if not block_row:
                 raise KeyError(f"Block {block_id!r} not found.")
@@ -517,6 +538,8 @@ class EventBlockConfigService:
             if event_row:
                 now = self._now()
                 event_row.updated_at = now
+                event_row.updated_by = actor
+                self._snapshot_event(session, event_id, self._next_version_number(session, event_id), actor)
             session.commit()
 
     # ── Block selection ───────────────────────────────────────────────────────

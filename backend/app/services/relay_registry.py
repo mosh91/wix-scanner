@@ -30,7 +30,7 @@ class _Base(DeclarativeBase):
 
 
 class _RelayInstanceRow(_Base):
-    __tablename__ = "relay_instances"
+    __tablename__ = "relay_instance"
 
     relay_id = Column(String, primary_key=True)
     relay_name = Column(String, nullable=False)

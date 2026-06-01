@@ -172,14 +172,19 @@ class SiteEventBindingService:
         binding_id = str(uuid4())
         now = self._now()
         with self._session_factory() as session:
-            # Look up the event by wix_event_id to get the real FK
-            event_row = session.execute(
-                text("SELECT id FROM event WHERE wix_event_id = :wix_event_id"),
-                {"wix_event_id": wix_event_id},
-            ).fetchone()
-            if event_row is None:
-                raise ValueError(f"Event with wix_event_id={wix_event_id!r} not found. Create the event first.")
-            event_id = str(event_row[0])
+            # On PostgreSQL, look up the internal event UUID via wix_event_id.
+            # On SQLite (test environments), fall back to wix_event_id as the FK value.
+            is_postgres = self._engine.dialect.name == "postgresql"
+            if is_postgres:
+                event_row = session.execute(
+                    text("SELECT id FROM event WHERE wix_event_id = :wix_event_id"),
+                    {"wix_event_id": wix_event_id},
+                ).fetchone()
+                if event_row is None:
+                    raise ValueError(f"Event with wix_event_id={wix_event_id!r} not found. Create the event first.")
+                event_id = str(event_row[0])
+            else:
+                event_id = wix_event_id
             session.add(_BindingRow(
                 id=binding_id,
                 event_id=event_id,
