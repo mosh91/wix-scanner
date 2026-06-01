@@ -28,7 +28,7 @@
       "dashboard": "Dashboard",
       "integrations": "Integrations",
       "deliveries": "Webhook Deliveries",
-      "credentials": "Credentials",
+      "credentials": "Auth Mode Guide",
       "auth-settings": "Auth Settings",
       "api-key-management": "API Key Management",
       "readiness": "Readiness",
@@ -40,7 +40,7 @@
     },
     "setup": {
       "title": "Single-Site Setup",
-      "description": "Keep one active Wix site and one event in focus, then finish credential configuration in one place.",
+      "description": "Keep one active Wix site and one event in focus, then use the auth mode selected in .env.",
       "activeSite": "Active site",
       "activeEvent": "Active event",
       "notBound": "Not bound yet",
@@ -48,9 +48,30 @@
       "flowTitle": "Recommended setup flow",
       "flowDescription": "Follow this sequence for a clean and predictable go-live.",
       "flowStep1": "Create or refresh your site-event binding.",
-      "flowStep2": "Create and validate the credential profile.",
-      "flowStep3": "Confirm auth token health or test OAuth connectivity.",
-      "flowStep4": "Test and save your Wix API key configuration."
+      "flowStep2": "Set WIX_SCANNER_CREDENTIAL_PROVIDER_MODE in .env.",
+      "flowStep3": "Use oauth for app credentials and instance ID, or env for a static Wix API token.",
+      "flowStep4": "Restart the backend so the selected auth mode takes effect."
+    },
+    "authModeGuide": {
+      "title": "Auth mode guide",
+      "description": "The page shows only the active auth path selected in .env.",
+      "helpButton": "How to switch",
+      "currentMode": "Current mode",
+      "selectedLabel": "Selected mode",
+      "switchLabel": "How to switch",
+      "switchHint": "Set WIX_SCANNER_CREDENTIAL_PROVIDER_MODE in .env, then restart the backend.",
+      "loading": "Loading mode...",
+      "expandButton": "Show details",
+      "collapseButton": "Hide details",
+      "modes": {
+        "oauth": "OAuth",
+        "api_key": "API key"
+      },
+      "oauthTitle": "OAuth mode",
+      "oauthBody": "Use this when the backend should auto-refresh Wix tokens from app id, app secret, and app instance id.",
+      "apiKeyTitle": "API key mode",
+      "apiKeyBody": "Use this when you want a static Wix API token stored through the API key settings flow.",
+      "referenceBody": "OAuth uses app credentials plus the app instance ID. API key mode uses the static Wix API token path instead."
     },
     "metrics": {
       "verifiedBindings": "Verified bindings",

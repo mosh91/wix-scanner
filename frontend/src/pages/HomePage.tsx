@@ -112,6 +112,7 @@ export default function HomePage() {
   const [loadingAuthSettings, setLoadingAuthSettings] = useState(false);
   const [apiKeySettings, setApiKeySettings] = useState<ApiKeySettingsResponse | null>(null);
   const [loadingApiKeySettings, setLoadingApiKeySettings] = useState(false);
+  const [isAuthModeGuideExpanded, setIsAuthModeGuideExpanded] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [wixAccountId, setWixAccountId] = useState("");
   const [testingApiKey, setTestingApiKey] = useState(false);
@@ -355,6 +356,9 @@ export default function HomePage() {
   const primaryBinding = bindings[0] ?? null;
   const primaryEventId = primaryBinding?.wix_event_id ?? verifiedEvents[0]?.wix_event_id ?? newEventId;
   const primarySiteId = primaryBinding?.wix_site_id ?? newSiteId;
+  const selectedAuthMode = authTokenStatus?.auth_mode ?? apiKeySettings?.auth_mode ?? null;
+  const showOAuthAuthSettings = selectedAuthMode === "oauth" || selectedAuthMode === null;
+  const showApiKeySettings = selectedAuthMode === "api_key" || selectedAuthMode === null;
 
   const loadWebhookHistory = useCallback(async () => {
     setLoadingWebhooks(true);
@@ -586,6 +590,15 @@ export default function HomePage() {
       void loadApiKeySettings();
     }
   }, [activeTab, loadApiKeySettings]);
+
+  useEffect(() => {
+    if (selectedAuthMode === "oauth" && activeTab === "api-key-management") {
+      setActiveTab("auth-settings");
+    }
+    if (selectedAuthMode === "api_key" && activeTab === "auth-settings") {
+      setActiveTab("api-key-management");
+    }
+  }, [activeTab, selectedAuthMode]);
 
   const handleRefreshAuthToken = async () => {
     try {
@@ -851,6 +864,66 @@ export default function HomePage() {
               </div>
 
               <p className="text-sm text-muted-foreground">{t("home.setup.singleContextHint")}</p>
+
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {t("home.authModeGuide.currentMode")}
+                    </div>
+                    <div className="mt-1 font-medium">
+                      {selectedAuthMode ? t(`home.authModeGuide.modes.${selectedAuthMode}`) : t("home.authModeGuide.loading")}
+                    </div>
+                    <Badge variant="outline">.env</Badge>
+                  </div>
+                  <Button
+                    className="h-8 px-3 text-xs"
+                    variant="ghost"
+                    onClick={() => setIsAuthModeGuideExpanded((current) => !current)}
+                  >
+                    {isAuthModeGuideExpanded ? t("home.authModeGuide.collapseButton") : t("home.authModeGuide.expandButton")}
+                  </Button>
+                </div>
+
+                {isAuthModeGuideExpanded ? (
+                  <>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg border border-border/70 bg-background p-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {t("home.authModeGuide.oauthTitle")}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {t("home.authModeGuide.oauthBody")}
+                        </div>
+                        <div className="mt-2 text-xs font-medium">
+                          WIX_SCANNER_CREDENTIAL_PROVIDER_MODE=oauth
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          WIX_SCANNER_WIX_APP_ID, WIX_SCANNER_WIX_APP_SECRET, WIX_SCANNER_WIX_APP_INSTANCE_ID
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-background p-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {t("home.authModeGuide.apiKeyTitle")}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {t("home.authModeGuide.apiKeyBody")}
+                        </div>
+                        <div className="mt-2 text-xs font-medium">
+                          WIX_SCANNER_CREDENTIAL_PROVIDER_MODE=env
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          WIX_SCANNER_WIX_API_TOKEN
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {t("home.authModeGuide.switchHint")}
+                    </p>
+                  </>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
 
@@ -1071,106 +1144,50 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "credentials" || activeTab === "setup" ? (
+      {activeTab === "credentials" ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>{t("home.credentials.title")}</CardTitle>
+              <CardTitle>{t("home.authModeGuide.title")}</CardTitle>
               <Button className="h-8 px-3 text-xs" variant="outline" onClick={() => setIsCredentialsHelpOpen(true)}>
-                {t("home.credentials.helpButton")}
+                {t("home.authModeGuide.helpButton")}
               </Button>
             </div>
-            <CardDescription>{t("home.credentials.description")}</CardDescription>
+            <CardDescription>{t("home.authModeGuide.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
-              <input
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-                value={newProfileName}
-                onChange={(e) => setNewProfileName(e.target.value)}
-                placeholder={t("home.credentials.profileNamePlaceholder")}
-              />
-              <select
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-                value={newAuthMode}
-                onChange={(e) => setNewAuthMode(e.target.value as AuthMode)}
-              >
-                <option value="api_key">{t("home.credentials.authModes.api_key")}</option>
-                <option value="oauth">{t("home.credentials.authModes.oauth")}</option>
-              </select>
-              <Button onClick={() => void handleCreateCredential()}>{t("home.credentials.create")}</Button>
-              <Button variant="secondary" onClick={() => void loadCredentials()} disabled={loadingCredentials}>
-                {loadingCredentials ? t("home.common.refreshing") : t("home.common.refresh")}
-              </Button>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-sm">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authModeGuide.selectedLabel")}</div>
+                <div className="mt-1 font-medium">
+                  {selectedAuthMode ? t(`home.authModeGuide.modes.${selectedAuthMode}`) : t("home.authModeGuide.loading")}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-sm">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.authModeGuide.switchLabel")}</div>
+                <div className="mt-1 font-medium">{t("home.authModeGuide.switchHint")}</div>
+              </div>
             </div>
 
-            <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => void handleCheckAuthConsistency()}>
-              Check Auth Consistency
-            </Button>
-
-            {credentials.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("home.credentials.empty")}</p>
-            ) : (
-              <div className="space-y-2">
-                {credentials.map((cred) => (
-                  <div
-                    key={cred.credential_id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/70 p-3"
-                  >
-                    <div className="space-y-1 text-sm">
-                      <div className="font-medium">{cred.profile_name}</div>
-                      <div className="text-muted-foreground">
-                        {t("home.credentials.authModeLabel")}: {t(`home.credentials.authModes.${cred.auth_mode}`)}
-                        {" | "}
-                        {t(`home.credentials.states.${cred.lifecycle_state}`)}
-                      </div>
-                      {cred.validation_error ? (
-                        <div className="text-xs text-red-500">{cred.validation_error}</div>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        className="h-8 px-3 text-xs"
-                        variant="outline"
-                        onClick={() => handleOpenValidateModal(cred)}
-                        disabled={cred.lifecycle_state === "revoked" || cred.lifecycle_state === "active"}
-                      >
-                        {t("home.credentials.validate")}
-                      </Button>
-                      <Button
-                        className="h-8 px-3 text-xs"
-                        variant="outline"
-                        onClick={() => void handleActivateCredential(cred.credential_id)}
-                        disabled={cred.lifecycle_state !== "validated"}
-                      >
-                        {t("home.credentials.activate")}
-                      </Button>
-                      <Button
-                        className="h-8 px-3 text-xs"
-                        variant="outline"
-                        onClick={() => handleOpenRotateModal(cred)}
-                        disabled={cred.lifecycle_state === "revoked" || cred.lifecycle_state === "failed"}
-                      >
-                        {t("home.credentials.rotate")}
-                      </Button>
-                      <Button
-                        className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive/10"
-                        variant="outline"
-                        onClick={() => void handleRevokeCredential(cred.credential_id)}
-                        disabled={cred.lifecycle_state === "revoked"}
-                      >
-                        {t("home.credentials.revoke")}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+            <div className="space-y-3 rounded-xl border border-border/70 bg-background p-4 text-sm leading-6">
+              <div>
+                <div className="font-medium">1. {t("home.authModeGuide.oauthTitle")}</div>
+                <p className="text-muted-foreground">{t("home.authModeGuide.oauthBody")}</p>
               </div>
-            )}
+              <div>
+                <div className="font-medium">2. {t("home.authModeGuide.apiKeyTitle")}</div>
+                <p className="text-muted-foreground">{t("home.authModeGuide.apiKeyBody")}</p>
+              </div>
+              <div>
+                <div className="font-medium">3. {t("home.authModeGuide.oauthTitle")}</div>
+                <p className="text-muted-foreground">{t("home.authModeGuide.referenceBody")}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : null}
 
-      {activeTab === "auth-settings" || activeTab === "setup" ? (
+      {activeTab === "auth-settings" || (activeTab === "setup" && showOAuthAuthSettings) ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1230,7 +1247,7 @@ export default function HomePage() {
         </Card>
       ) : null}
 
-      {activeTab === "api-key-management" || activeTab === "setup" ? (
+      {activeTab === "api-key-management" || (activeTab === "setup" && showApiKeySettings) ? (
         <Card className="border-border/70">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">

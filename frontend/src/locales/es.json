@@ -28,7 +28,7 @@
       "dashboard": "Dashboard",
       "integrations": "Integraciones",
       "deliveries": "Entregas de Webhooks",
-      "credentials": "Credenciales",
+      "credentials": "Guia de modo Auth",
       "auth-settings": "Config. Auth",
       "api-key-management": "Gestion de Clave API",
       "readiness": "Preparacion",
@@ -40,7 +40,7 @@
     },
     "setup": {
       "title": "Configuracion de un solo sitio",
-      "description": "Mantenga un sitio Wix y un evento activos, y complete la configuracion de credenciales en una sola vista.",
+      "description": "Mantenga un sitio Wix activo y un evento en foco, luego use el modo de auth seleccionado en .env.",
       "activeSite": "Sitio activo",
       "activeEvent": "Evento activo",
       "notBound": "Sin vinculacion",
@@ -48,9 +48,30 @@
       "flowTitle": "Flujo recomendado",
       "flowDescription": "Siga esta secuencia para una salida a produccion limpia y predecible.",
       "flowStep1": "Cree o actualice el binding de sitio-evento.",
-      "flowStep2": "Cree y valide el perfil de credenciales.",
-      "flowStep3": "Confirme la salud del token auth o pruebe conectividad OAuth.",
-      "flowStep4": "Pruebe y guarde la configuracion de clave API de Wix."
+      "flowStep2": "Defina WIX_SCANNER_CREDENTIAL_PROVIDER_MODE en .env.",
+      "flowStep3": "Use oauth para credenciales de app e instance ID, o env para un token API estatico de Wix.",
+      "flowStep4": "Reinicie el backend para aplicar el modo de auth seleccionado."
+    },
+    "authModeGuide": {
+      "title": "Guia de modo Auth",
+      "description": "La pagina solo muestra la ruta de auth activa seleccionada en .env.",
+      "helpButton": "Como cambiarlo",
+      "currentMode": "Modo actual",
+      "selectedLabel": "Modo seleccionado",
+      "switchLabel": "Como cambiarlo",
+      "switchHint": "Defina WIX_SCANNER_CREDENTIAL_PROVIDER_MODE en .env y reinicie el backend.",
+      "loading": "Cargando modo...",
+      "expandButton": "Mostrar detalles",
+      "collapseButton": "Ocultar detalles",
+      "modes": {
+        "oauth": "OAuth",
+        "api_key": "Clave API"
+      },
+      "oauthTitle": "Modo OAuth",
+      "oauthBody": "Use esto cuando el backend deba refrescar automaticamente los tokens de Wix usando app id, app secret e app instance id.",
+      "apiKeyTitle": "Modo clave API",
+      "apiKeyBody": "Use esto cuando quiera un token API estatico de Wix guardado mediante el flujo de configuracion de clave API.",
+      "referenceBody": "OAuth usa credenciales de app mas el app instance ID. El modo clave API usa en su lugar la ruta estatica del token API de Wix."
     },
     "metrics": {
       "verifiedBindings": "Bindings verificados",
