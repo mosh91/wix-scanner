@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wix-mcp-remote": {
+      "type": "http",
+      "url": "https://mcp.wix.com/mcp"
+    }
+  }
+}

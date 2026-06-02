@@ -4,5 +4,9 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"chat.mcp.discovery.enabled": {
+			"claude-desktop": true
+		}
+	}
 }
