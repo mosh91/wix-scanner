@@ -208,6 +208,7 @@ export type WixScopeAuditRecord = {
 
 export const BOOTSTRAP_QR_PREFIX = "BOOTSTRAP:v1:";
 export const ADMIN_BOOTSTRAP_QR_PREFIX = "ADMIN_BOOTSTRAP:v1:";
+export const KIOSK_QR_PREFIX = "KIOSK:v1:";
 
 export type BootstrapValidateRequest = {
   payload: string;
@@ -222,12 +223,48 @@ export type BootstrapSessionResponse = {
   is_admin_override: boolean;
 };
 
-/** Returns true if the scanned payload is a kiosk bootstrap QR (normal or admin). */
+/** Returns true if the scanned payload is a kiosk bootstrap QR (normal, admin, or DB-backed kiosk). */
 export function isBootstrapQR(payload: string): boolean {
   return (
     payload.startsWith(BOOTSTRAP_QR_PREFIX) ||
-    payload.startsWith(ADMIN_BOOTSTRAP_QR_PREFIX)
+    payload.startsWith(ADMIN_BOOTSTRAP_QR_PREFIX) ||
+    payload.startsWith(KIOSK_QR_PREFIX)
   );
+}
+
+async function validateKioskQR(payload: string): Promise<BootstrapSessionResponse> {
+  const b64 = payload.slice(KIOSK_QR_PREFIX.length);
+  let decoded: { k: string; t: string };
+  try {
+    decoded = JSON.parse(atob(b64)) as { k: string; t: string };
+  } catch {
+    throw new Error("QR de arranque inválido o expirado.");
+  }
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signed_token: decoded.t }),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    const detail = (errData as { detail?: string | { reason?: string } }).detail;
+    const reason = typeof detail === "object" ? (detail?.reason ?? "unknown") : (detail ?? `Bootstrap validation failed (${response.status})`);
+    throw new Error(reason);
+  }
+  const result = await response.json() as {
+    valid: boolean;
+    credential_id: string;
+    event_id: string;
+    station_id: string;
+    expires_at: string;
+  };
+  return {
+    bootstrap_session_id: result.credential_id,
+    event_id: result.event_id,
+    station_id: result.station_id,
+    expires_at: Math.floor(new Date(result.expires_at).getTime() / 1000),
+    is_admin_override: false,
+  };
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
@@ -278,6 +315,9 @@ export async function fetchScannerHealth(eventId?: string): Promise<ScannerHealt
 export async function validateBootstrapQR(
   request: BootstrapValidateRequest,
 ): Promise<BootstrapSessionResponse> {
+  if (request.payload.startsWith(KIOSK_QR_PREFIX)) {
+    return validateKioskQR(request.payload);
+  }
   const response = await fetch(`${API_BASE}/bootstrap/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1188,8 +1228,8 @@ function adminHeaders(adminApiKey: string, contentType = false): Record<string, 
 }
 
 export async function listKiosks(adminApiKey: string): Promise<KioskRecord[]> {
-  // backend exposes bootstrap credentials — map them into kiosk-like records
-  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials`, {
+  // include_expired=true so credentials don't vanish from the list after their TTL
+  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials?include_expired=true`, {
     headers: adminHeaders(adminApiKey),
   });
   if (!response.ok) throw new Error(`List kiosks failed: ${response.status}`);
@@ -1200,7 +1240,7 @@ export async function listKiosks(adminApiKey: string): Promise<KioskRecord[]> {
     event_id: string;
     token_preview?: string | null;
     mode?: string;
-    expires_at?: string;
+    expires_at?: string | null;
     revoked_at?: string | null;
     used_at?: string | null;
     created_at: string;
@@ -1211,7 +1251,9 @@ export async function listKiosks(adminApiKey: string): Promise<KioskRecord[]> {
     site_id: r.relay_id ?? "",
     event_id: r.event_id,
     station_id: r.station_id,
-    status: r.revoked_at || r.used_at ? "inactive" : "active",
+    status: (r.revoked_at || r.used_at || (r.expires_at && new Date(r.expires_at) < new Date()))
+      ? "inactive"
+      : "active",
     token_preview: r.token_preview ?? null,
     last_regenerated_at: r.created_at,
     created_at: r.created_at,

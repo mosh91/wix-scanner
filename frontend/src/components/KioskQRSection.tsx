@@ -372,15 +372,24 @@ export default function KioskQRSection(): JSX.Element {
             </div>
 
             <div className="mt-4 flex flex-col items-center gap-3">
-              <QRCodeCanvas id="kiosk-qr-canvas" value={buildPayload(selected.kiosk.kiosk_id, selected.token)} size={256} level="H" includeMargin={true} />
-              <div className="text-sm text-muted-foreground break-all">{t("home.kiosks.oneTimeNote", "This token is shown only once after regeneration. Copy or print it now.")}</div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => { navigator.clipboard?.writeText(selected.token); toast.success(t("home.kiosks.copied", "Copied")); }}>
-                  {t("home.kiosks.copy", "Copy token")}
-                </Button>
-                <Button variant="outline" className="h-8 px-3 text-xs" onClick={handleDownload}>{t("home.kiosks.download", "Download PNG")}</Button>
-                <Button variant="outline" className="h-8 px-3 text-xs" onClick={handlePrint}>{t("home.kiosks.print", "Print")}</Button>
-              </div>
+              {selected.token.includes(".") ? (
+                <>
+                  <QRCodeCanvas id="kiosk-qr-canvas" value={buildPayload(selected.kiosk.kiosk_id, selected.token)} size={256} level="H" includeMargin={true} />
+                  <div className="text-sm text-muted-foreground break-all">{t("home.kiosks.oneTimeNote", "This token is shown only once after regeneration. Copy or print it now.")}</div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => { navigator.clipboard?.writeText(selected.token); toast.success(t("home.kiosks.copied", "Copied")); }}>
+                      {t("home.kiosks.copy", "Copy token")}
+                    </Button>
+                    <Button variant="outline" className="h-8 px-3 text-xs" onClick={handleDownload}>{t("home.kiosks.download", "Download PNG")}</Button>
+                    <Button variant="outline" className="h-8 px-3 text-xs" onClick={handlePrint}>{t("home.kiosks.print", "Print")}</Button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                  <div className="mb-1 font-medium text-foreground">{t("home.kiosks.tokenUnavailable", "Full token no longer available")}</div>
+                  {t("home.kiosks.tokenUnavailableHint", "The token is shown only once when first generated. Use Regenerate to issue a new QR code.")}
+                </div>
+              )}
             </div>
           </div>
         </div>
