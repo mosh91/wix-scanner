@@ -195,6 +195,14 @@
         "referenceEvents": "Events API — List Events (Wix API Docs)"
       }
     },
+    "integrations": {
+      "eventsTitle": "Events",
+      "eventsDescription": "Each event shows its Wix binding and check-in blocks in one place.",
+      "addEvent": "Add",
+      "noEvents": "No events registered yet.",
+      "noBinding": "No binding",
+      "noEventConfig": "No local config"
+    },
     "bindings": {
       "title": "Integrations",
       "description": "Use the Wix app instance from .env to pull the site, import events, and manage site-event bindings.",
@@ -404,6 +412,7 @@
       "title": "Event Readiness",
       "description": "Check bindings, credentials, scopes, manifest freshness, cache warming, backend connectivity, and worker health before activation.",
       "eventPlaceholder": "event-id",
+      "noEvents": "No verified events available",
       "check": "Check readiness",
       "syncManifest": "Sync manifest",
       "activate": "Activate event",
@@ -414,7 +423,7 @@
       "syncError": "Could not sync manifest",
       "activateSuccess": "Event activated after readiness check",
       "activateError": "Could not activate event",
-      "empty": "Enter an event ID to evaluate readiness.",
+      "empty": "Select an event to evaluate readiness.",
       "overall": "Overall status",
       "failedChecks": "Failed checks",
       "recommendedActions": "Recommended actions",
@@ -436,8 +445,8 @@
       "helpModal": {
         "title": "Event Readiness Checks",
         "subtitle": "What each component status means and how to resolve failures.",
-        "step1Title": "Enter the Wix event ID",
-        "step1Body": "Find your event ID in the Wix Dashboard under Events. Select your event and copy the alphanumeric ID from the URL (e.g. /events/abc123).",
+        "step1Title": "Select a verified event",
+        "step1Body": "The dropdown only shows events with a verified binding. If your event is missing, go to Integrations and verify its binding first.",
         "step2Title": "What each status means",
         "step2Body": "'Ready' means all checks passed. 'Degraded' means at least one non-critical check failed but scanning can still work. 'Critical' means a required check failed — scanning is not safe.",
         "step3Title": "How to resolve failed checks",

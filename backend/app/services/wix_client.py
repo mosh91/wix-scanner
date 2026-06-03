@@ -46,10 +46,16 @@ class WixClient:
 
         wix_api_token = self._credential_provider.get_wix_api_token()
         if not wix_api_token:
+            reason = "Wix API token no configurado."
+            if self._settings.credential_provider_mode == "oauth":
+                from app.services.wix_oauth import get_wix_oauth_service  # noqa: PLC0415
+                last_err = get_wix_oauth_service()._last_error
+                if last_err:
+                    reason = f"OAuth token unavailable: {last_err}"
             return WixCheckinResult(
                 outcome="auth_error",
                 wix_status="auth_error",
-                reason="Wix API token no configurado.",
+                reason=reason,
                 error_code="WIX_AUTH_NOT_CONFIGURED",
                 attempts=0,
             )
@@ -197,7 +203,7 @@ class WixClient:
             return WixCheckinResult(
                 outcome="invalid_ticket",
                 wix_status="rejected",
-                reason="Wix rechazó el ticket por formato o contexto.",
+                reason=f"Wix rechazó el ticket [{response.status_code}]: {response.text[:512]}",
                 error_code="INVALID_TICKET",
                 attempts=attempt,
                 http_status=response.status_code,
@@ -206,7 +212,7 @@ class WixClient:
             return WixCheckinResult(
                 outcome="auth_error",
                 wix_status="auth_error",
-                reason="Wix rechazó las credenciales de integración.",
+                reason=f"Wix rechazó las credenciales [{response.status_code}]: {response.text[:512]}",
                 error_code="WIX_AUTH_ERROR",
                 attempts=attempt,
                 http_status=response.status_code,
@@ -215,7 +221,7 @@ class WixClient:
             return WixCheckinResult(
                 outcome="rate_limited",
                 wix_status="rate_limited",
-                reason="Wix devolvió rate-limit.",
+                reason=f"Wix devolvió rate-limit [{response.status_code}]: {response.text[:256]}",
                 error_code="WIX_RATE_LIMITED",
                 attempts=attempt,
                 http_status=response.status_code,
@@ -224,7 +230,7 @@ class WixClient:
             return WixCheckinResult(
                 outcome="upstream_error",
                 wix_status="upstream_error",
-                reason="Wix devolvió error interno.",
+                reason=f"Wix error interno [{response.status_code}]: {response.text[:256]}",
                 error_code="WIX_5XX",
                 attempts=attempt,
                 http_status=response.status_code,
@@ -232,7 +238,7 @@ class WixClient:
         return WixCheckinResult(
             outcome="upstream_error",
             wix_status="upstream_error",
-            reason=f"Wix devolvió estado no manejado: {response.status_code}",
+            reason=f"Wix devolvió estado no manejado [{response.status_code}]: {response.text[:256]}",
             error_code="WIX_UNHANDLED_STATUS",
             attempts=attempt,
             http_status=response.status_code,

@@ -277,8 +277,8 @@ class SiteEventBindingService:
             app_installation_status=typing_cast(AppInstallationStatus, row.app_installation_status),
             binding_verified_at=self._to_str(row.binding_verified_at),
             last_verification_error=row.last_verification_error,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=self._to_str(row.created_at),
+            updated_at=self._to_str(row.updated_at),
         )
 
     def _upsert_wix_site_name(self, wix_site_id: str, name: str) -> None:

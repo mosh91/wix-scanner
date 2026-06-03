@@ -1,3 +1,10 @@
 {
-  "enabledMcpjsonServers": ["wix-mcp-remote"]
+  "enabledMcpjsonServers": [
+    "wix-mcp-remote"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(awk 'NR>=2102 && /^\\\\s*\\\\\\) : null\\\\}/ {print NR; exit}' \"/Users/luissanchez/Development Projects/wix-scanner/frontend/src/pages/HomePage.tsx\")"
+    ]
+  }
 }

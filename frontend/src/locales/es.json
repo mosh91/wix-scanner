@@ -195,6 +195,14 @@
         "referenceEvents": "API de Eventos — Listar Eventos (Documentacion API Wix)"
       }
     },
+    "integrations": {
+      "eventsTitle": "Eventos",
+      "eventsDescription": "Cada evento muestra su binding Wix y sus bloques de check-in en un solo lugar.",
+      "addEvent": "Agregar",
+      "noEvents": "No hay eventos registrados aun.",
+      "noBinding": "Sin binding",
+      "noEventConfig": "Sin config. local"
+    },
     "bindings": {
       "title": "Integraciones",
       "description": "Use la instancia de la app Wix desde .env para obtener el sitio, importar eventos y gestionar bindings sitio-evento.",
@@ -404,6 +412,7 @@
       "title": "Readiness del evento",
       "description": "Revise bindings, credenciales, scopes, frescura del manifest, cache warm, conectividad del backend y salud de workers antes de activar.",
       "eventPlaceholder": "event-id",
+      "noEvents": "No hay eventos verificados disponibles",
       "check": "Verificar readiness",
       "syncManifest": "Sincronizar manifest",
       "activate": "Activar evento",
@@ -414,7 +423,7 @@
       "syncError": "No se pudo sincronizar el manifest",
       "activateSuccess": "Evento activado despues de la verificacion de readiness",
       "activateError": "No se pudo activar el evento",
-      "empty": "Ingrese un event ID para evaluar el readiness.",
+      "empty": "Seleccione un evento para evaluar el readiness.",
       "overall": "Estado general",
       "failedChecks": "Verificaciones fallidas",
       "recommendedActions": "Acciones recomendadas",
@@ -436,8 +445,8 @@
       "helpModal": {
         "title": "Verificaciones de readiness del evento",
         "subtitle": "Que significa cada estado de componente y como resolver fallas.",
-        "step1Title": "Ingresa el ID del evento Wix",
-        "step1Body": "Encuentra tu ID de evento en el Dashboard de Wix bajo Eventos. Selecciona tu evento y copia el ID alfanumerico de la URL (ej. /events/abc123).",
+        "step1Title": "Selecciona un evento verificado",
+        "step1Body": "El desplegable muestra solo eventos con un binding verificado. Si no aparece tu evento, ve a Integraciones y verifica el binding primero.",
         "step2Title": "Que significa cada estado",
         "step2Body": "'Listo' significa que todas las verificaciones pasaron. 'Degradado' significa que al menos una verificacion no critica fallo pero el escaneo puede funcionar. 'Critico' significa que una verificacion requerida fallo: escanear no es seguro.",
         "step3Title": "Como resolver verificaciones fallidas",
