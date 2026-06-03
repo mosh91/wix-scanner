@@ -348,9 +348,6 @@ export default function HomePage() {
     };
   }, [bindings, scopeAudits, webhookHistory, verifiedEvents.length]);
 
-  const primaryBinding = bindings[0] ?? null;
-  const primaryEventId = primaryBinding?.wix_event_id ?? verifiedEvents[0]?.wix_event_id ?? newEventId;
-  const primarySiteId = primaryBinding?.wix_site_id ?? newSiteId;
   const selectedAuthMode = authTokenStatus?.auth_mode ?? apiKeySettings?.auth_mode ?? null;
 
   const eventNameByWixEventId = useMemo(() => {
@@ -968,18 +965,6 @@ export default function HomePage() {
                 </Button>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-border/70 bg-background p-4">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.setup.activeSite")}</div>
-                  <div className="mt-1 text-lg font-semibold">{primarySiteId || t("home.setup.notBound")}</div>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-background p-4">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("home.setup.activeEvent")}</div>
-                  <div className="mt-1 text-lg font-semibold">{primaryEventId || t("home.setup.notBound")}</div>
-                </div>
-              </div>
-
-              <p className="text-sm text-muted-foreground">{t("home.setup.singleContextHint")}</p>
 
               <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">

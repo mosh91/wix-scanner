@@ -1,4 +1,4 @@
-backend/data/*.db
+backend/data/*
 backend/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
