@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.services.site_event_binding import get_site_event_binding_service
 
 router = APIRouter(prefix="/bootstrap")
 
@@ -61,6 +62,7 @@ class BootstrapValidateRequest(BaseModel):
 class BootstrapSessionResponse(BaseModel):
     bootstrap_session_id: str
     event_id: str
+    event_name: str | None = None
     station_id: str
     expires_at: int
     is_admin_override: bool
@@ -178,9 +180,13 @@ def validate_bootstrap(
         is_admin=is_admin,
     )
 
+    binding_service = get_site_event_binding_service()
+    event_name = binding_service.get_event_name(event_id)
+
     return BootstrapSessionResponse(
         bootstrap_session_id=session_id,
         event_id=event_id,
+        event_name=event_name,
         station_id=station_id,
         expires_at=expires_at,
         is_admin_override=is_admin,

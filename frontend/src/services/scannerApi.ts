@@ -218,6 +218,7 @@ export type BootstrapValidateRequest = {
 export type BootstrapSessionResponse = {
   bootstrap_session_id: string;
   event_id: string;
+  event_name?: string | null;
   station_id: string;
   expires_at: number;
   is_admin_override: boolean;
@@ -340,6 +341,14 @@ export async function clearBootstrapSession(bootstrapSessionId: string): Promise
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bootstrap_session_id: bootstrapSessionId }),
+  });
+}
+
+export async function triggerManifestSync(eventId: string): Promise<void> {
+  await fetch(`${API_BASE}/manifest/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_id: eventId }),
   });
 }
 

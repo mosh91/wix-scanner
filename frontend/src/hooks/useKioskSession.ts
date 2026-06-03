@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type KioskSession = {
   bootstrapSessionId: string;
   activeEventId: string;
+  activeEventName?: string;
   activeStationId: string;
   /** Unix timestamp (seconds) when the session expires. */
   expiresAt: number;

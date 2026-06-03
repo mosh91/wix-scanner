@@ -26,6 +26,7 @@ import {
   clearBootstrapSession,
   isBootstrapQR,
   submitScan,
+  triggerManifestSync,
   validateBootstrapQR,
   type ScanResponse,
 } from "@/services/scannerApi";
@@ -92,6 +93,7 @@ export default function OperatorPage() {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<ScanHistoryItem | null>(null);
   const isFirstMountRef = useRef(true);
   const focusLostToastIdRef = useRef<string | number | null>(null);
+  const manifestStaleToastIdRef = useRef<string | number | null>(null);
 
   const webhid = useWebHIDScannerHealth();
   const backendHealth = useBackendScannerHealth(session?.activeEventId);
@@ -257,7 +259,16 @@ export default function OperatorPage() {
       toast.error(t("operator.backendDegraded"));
     }
     if (backendHealth.data.manifest_cache_stale && enrolled) {
-      toast.warning(t("operator.manifestStale"));
+      if (manifestStaleToastIdRef.current === null) {
+        manifestStaleToastIdRef.current = toast.warning(t("operator.manifestStale"), {
+          duration: Infinity,
+        });
+      }
+    } else {
+      if (manifestStaleToastIdRef.current !== null) {
+        toast.dismiss(manifestStaleToastIdRef.current);
+        manifestStaleToastIdRef.current = null;
+      }
     }
   }, [backendHealth.data, enrolled, t]);
 
@@ -271,13 +282,15 @@ export default function OperatorPage() {
       enroll({
         bootstrapSessionId: result.bootstrap_session_id,
         activeEventId: result.event_id,
+        activeEventName: result.event_name ?? undefined,
         activeStationId: result.station_id,
         expiresAt: result.expires_at,
       });
+      void triggerManifestSync(result.event_id);
       setCurrentReason(null);
       setMode("bootstrap-success");
       toast.success(
-        t("bootstrap.enrolledToast", { event: result.event_id, station: result.station_id }),
+        t("bootstrap.enrolledToast", { event: result.event_name ?? result.event_id, station: result.station_id }),
       );
       window.setTimeout(() => setMode("idle"), KIOSK_RESET_MS.success);
     } catch (err) {
@@ -422,7 +435,7 @@ export default function OperatorPage() {
                 <p className="text-7xl font-black uppercase">{t("bootstrap.successTitle")}</p>
                 {session ? (
                   <p className="text-3xl font-semibold">
-                    {t("bootstrap.enrolledEvent")}: {session.activeEventId} · {t("bootstrap.enrolledStation")}: {session.activeStationId}
+                    {t("bootstrap.enrolledEvent")}: {session.activeEventName ?? session.activeEventId} · {t("bootstrap.enrolledStation")}: {session.activeStationId}
                   </p>
                 ) : null}
               </>
@@ -502,7 +515,7 @@ export default function OperatorPage() {
                 <>
                   <p className="text-white/85">
                     <span className="text-white/60">{t("bootstrap.enrolledEvent")}: </span>
-                    {session.activeEventId}
+                    {session.activeEventName ?? session.activeEventId}
                   </p>
                   <p className="text-white/85">
                     <span className="text-white/60">{t("bootstrap.enrolledStation")}: </span>

@@ -5,11 +5,12 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast as typing_cast
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import Column, String, Integer, Text, UniqueConstraint
+from sqlalchemy import String, Integer, Text, UniqueConstraint
+from sqlalchemy.orm import mapped_column, Mapped
 
 from app.core.config import Settings, get_settings
 from app.db import make_engine, make_session_factory
@@ -185,54 +186,56 @@ class _Base(DeclarativeBase):
 
 class _BindingRow(_Base):
     __tablename__ = "wix_site_event_binding"
-    id = Column(String, primary_key=True)  # UUID from database
-    event_id = Column(String, nullable=False)  # UUID reference to event table
-    wix_site_id = Column(String, nullable=False)
-    wix_event_id = Column(String, nullable=False)
-    binding_id = Column(String, nullable=True)
-    status = Column(String, nullable=False)
-    app_installation_status = Column(String, nullable=False)
-    binding_verified_at = Column(String, nullable=True)
-    scopes_verified_at = Column(String, nullable=True)
-    last_verification_error = Column(Text, nullable=True)
-    binding_metadata = Column("metadata", Text, nullable=False, default="{}")
-    created_by = Column(String, nullable=True)  # UUID
-    updated_by = Column(String, nullable=True)  # UUID
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=False)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String, nullable=False)
+    wix_site_id: Mapped[str] = mapped_column(String, nullable=False)
+    wix_event_id: Mapped[str] = mapped_column(String, nullable=False)
+    binding_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    app_installation_status: Mapped[str] = mapped_column(String, nullable=False)
+    binding_verified_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    scopes_verified_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_verification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    binding_metadata: Mapped[str] = mapped_column("metadata", Text, nullable=False, default="{}")
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    verified_by_actor: Mapped[str | None] = mapped_column(String, nullable=True)
+    verification_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class _WixSiteRow(_Base):
     __tablename__ = "wix_site"
     __table_args__ = (UniqueConstraint("wix_site_id", name="wix_site_unique_id"),)
-    id = Column(String, primary_key=True)
-    wix_site_id = Column(String, nullable=False, unique=True)
-    name = Column(String, nullable=False)
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=False)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    wix_site_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class _WixEventNameRow(_Base):
     __tablename__ = "wix_event_name"
     __table_args__ = (UniqueConstraint("wix_event_id", name="wix_event_name_unique_id"),)
-    id = Column(String, primary_key=True)
-    wix_event_id = Column(String, nullable=False, unique=True)
-    name = Column(String, nullable=False)
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=False)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    wix_event_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class _EventActivationRow(_Base):
     __tablename__ = "event_activation"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    wix_event_id = Column(String, nullable=False, unique=True)
-    status = Column(String, nullable=False)
-    activated_at = Column(String, nullable=False)
-    activated_by_actor = Column(String, nullable=False)
-    readiness_status = Column(String, nullable=False, default="ready")
-    readiness_acknowledged = Column(Integer, nullable=False, default=0)
-    readiness_failed_checks = Column(Text, nullable=False, default="[]")
-    readiness_recommended_actions = Column(Text, nullable=False, default="[]")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wix_event_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    activated_at: Mapped[str] = mapped_column(String, nullable=False)
+    activated_by_actor: Mapped[str] = mapped_column(String, nullable=False)
+    readiness_status: Mapped[str] = mapped_column(String, nullable=False, default="ready")
+    readiness_acknowledged: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    readiness_failed_checks: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    readiness_recommended_actions: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
 
 class SiteEventBindingService:
@@ -270,12 +273,12 @@ class SiteEventBindingService:
             wix_event_id=row.wix_event_id,
             wix_site_name=wix_site_name,
             wix_event_name=wix_event_name,
-            status=row.status,
-            app_installation_status=row.app_installation_status,
+            status=typing_cast(BindingStatus, row.status),
+            app_installation_status=typing_cast(AppInstallationStatus, row.app_installation_status),
             binding_verified_at=self._to_str(row.binding_verified_at),
             last_verification_error=row.last_verification_error,
-            created_at=self._to_str(row.created_at),
-            updated_at=self._to_str(row.updated_at),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
 
     def _upsert_wix_site_name(self, wix_site_id: str, name: str) -> None:
@@ -321,6 +324,9 @@ class SiteEventBindingService:
                 row.name = name
                 row.updated_at = now
             session.commit()
+
+    def get_event_name(self, wix_event_id: str) -> str | None:
+        return self._get_event_name_for_id(wix_event_id)
 
     def _get_event_name_for_id(self, wix_event_id: str) -> str | None:
         from sqlalchemy import select
