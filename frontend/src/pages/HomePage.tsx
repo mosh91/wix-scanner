@@ -1,6 +1,5 @@
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +12,7 @@ const TAB_KEYS = [
   "readiness",
   "sync-controls",
   "reconciliation",
-  "credentials",
   "auth-settings",
-  "api-key-management",
   "relay-management",
   "secret-rotation",
   "kiosk-qr",
@@ -68,20 +65,6 @@ function HeroStats() {
 
 function HomeShell() {
   const { t } = useTranslation();
-  const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const { selectedAuthMode } = useAdminData();
-  const activeTab = pathname.slice(1) || "integrations";
-
-  // Keep the auth tabs consistent with the configured provider mode.
-  useEffect(() => {
-    if (selectedAuthMode === "oauth" && activeTab === "api-key-management") {
-      navigate("/auth-settings", { replace: true });
-    }
-    if (selectedAuthMode === "api_key" && activeTab === "auth-settings") {
-      navigate("/api-key-management", { replace: true });
-    }
-  }, [activeTab, selectedAuthMode, navigate]);
 
   return (
     <section className="space-y-5">

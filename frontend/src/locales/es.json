@@ -89,7 +89,12 @@
       "regenerate": "Regenerar",
       "regenerating": "Regenerando...",
       "view": "Ver",
-      "confirmRegenerate": "¿Regenerar el QR de este kiosco?",
+      "confirmRegenerate": {
+        "title": "¿Regenerar el codigo QR?",
+        "body": "Esto invalidara el token actual de \"{{name}}\". El nuevo codigo QR se mostrara una sola vez.",
+        "confirm": "Regenerar",
+        "cancel": "Cancelar"
+      },
       "regenerated": "QR regenerado",
       "oneTimeNote": "Este token se muestra solo una vez tras regenerarlo. Copielo o imprimalo ahora.",
       "copy": "Copiar token",

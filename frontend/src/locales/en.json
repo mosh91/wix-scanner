@@ -89,7 +89,12 @@
       "regenerate": "Regenerate",
       "regenerating": "Regenerating...",
       "view": "View",
-      "confirmRegenerate": "Regenerate QR for this kiosk?",
+      "confirmRegenerate": {
+        "title": "Regenerate QR code?",
+        "body": "This will invalidate the current token for \"{{name}}\". The new QR code will be shown once.",
+        "confirm": "Regenerate",
+        "cancel": "Cancel"
+      },
       "regenerated": "QR regenerated",
       "oneTimeNote": "This token is shown only once after regeneration. Copy or print it now.",
       "copy": "Copy token",

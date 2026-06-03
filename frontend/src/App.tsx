@@ -10,9 +10,7 @@ import KioskQRSection from "@/components/KioskQRSection";
 import IntegrationsTab from "@/pages/features/IntegrationsTab";
 import DeliveriesTab from "@/pages/features/DeliveriesTab";
 import DashboardTab from "@/pages/features/DashboardTab";
-import CredentialsTab from "@/pages/features/CredentialsTab";
 import AuthSettingsTab from "@/pages/features/AuthSettingsTab";
-import ApiKeyManagementTab from "@/pages/features/ApiKeyManagementTab";
 import ReadinessTab from "@/pages/features/ReadinessTab";
 import SyncControlsTab from "@/pages/features/SyncControlsTab";
 import ReconciliationTab from "@/pages/features/ReconciliationTab";
@@ -80,9 +78,7 @@ export default function App() {
             <Route path="dashboard" element={<DashboardTab />} />
             <Route path="integrations" element={<IntegrationsTab />} />
             <Route path="deliveries" element={<DeliveriesTab />} />
-            <Route path="credentials" element={<CredentialsTab />} />
             <Route path="auth-settings" element={<AuthSettingsTab />} />
-            <Route path="api-key-management" element={<ApiKeyManagementTab />} />
             <Route path="readiness" element={<ReadinessTab />} />
             <Route path="sync-controls" element={<SyncControlsTab />} />
             <Route path="reconciliation" element={<ReconciliationTab />} />

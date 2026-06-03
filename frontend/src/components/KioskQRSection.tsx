@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   createKiosk,
   KioskRecord,
@@ -35,6 +36,7 @@ export default function KioskQRSection(): JSX.Element {
   const [selected, setSelected] = useState<{ kiosk: KioskRecord; token: string } | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmRegenerate, setConfirmRegenerate] = useState<KioskRecord | null>(null);
   // Admin API key is provided from environment in dev; do not expose edit in UI.
   const adminApiKey = import.meta.env.VITE_ADMIN_API_KEY ?? "";
   const [form, setForm] = useState({
@@ -117,20 +119,22 @@ export default function KioskQRSection(): JSX.Element {
     }
   };
 
-  const handleRegenerate = async (k: KioskRecord) => {
+  const handleRegenerate = (k: KioskRecord) => {
     if (!adminApiKey.trim()) {
       toast.error(t("home.kiosks.adminKeyRequired", "Enter the admin API key first"));
       return;
     }
-    if (!confirm(t("kiosks.confirmRegenerate", "Regenerate QR for this kiosk?"))) return;
+    setConfirmRegenerate(k);
+  };
+
+  const doRegenerate = async (k: KioskRecord) => {
+    setConfirmRegenerate(null);
     setRegeneratingId(k.kiosk_id);
     try {
       const res = await regenerateKioskQR(adminApiKey.trim(), k.kiosk_id);
-      // server returns token once
       setSelected({ kiosk: k, token: res.token });
-      // refresh list to pick up preview/status
       await load();
-      toast.success(t("kiosks.regenerated", "QR regenerated"));
+      toast.success(t("home.kiosks.regenerated", "QR regenerated"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("home.kiosks.regenerateError", "Failed to regenerate"));
     } finally {
@@ -349,7 +353,7 @@ export default function KioskQRSection(): JSX.Element {
                         <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => void handleToggle(k)}>
                           {k.status === "active" ? t("home.kiosks.deactivate", "Deactivate") : t("home.kiosks.activate", "Activate")}
                         </Button>
-                        <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => void handleRegenerate(k)} disabled={regeneratingId === k.kiosk_id}>
+                        <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => handleRegenerate(k)} disabled={regeneratingId === k.kiosk_id}>
                           {regeneratingId === k.kiosk_id ? t("home.kiosks.regenerating", "Regenerating...") : t("home.kiosks.regenerate", "Regenerate")}
                         </Button>
                         <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => setSelected({ kiosk: k, token: k.token_preview ?? "" })}>
@@ -399,6 +403,16 @@ export default function KioskQRSection(): JSX.Element {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmRegenerate !== null}
+        title={t("home.kiosks.confirmRegenerate.title")}
+        body={t("home.kiosks.confirmRegenerate.body", { name: confirmRegenerate?.name ?? confirmRegenerate?.kiosk_id })}
+        confirmLabel={t("home.kiosks.confirmRegenerate.confirm")}
+        cancelLabel={t("home.kiosks.confirmRegenerate.cancel")}
+        confirmClassName="border-amber-400/50 text-amber-600 hover:bg-amber-500/10"
+        onConfirm={() => confirmRegenerate && void doRegenerate(confirmRegenerate)}
+        onCancel={() => setConfirmRegenerate(null)}
+      />
     </div>
   );
 }
