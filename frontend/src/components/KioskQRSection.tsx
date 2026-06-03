@@ -98,6 +98,11 @@ export default function KioskQRSection(): JSX.Element {
 
   const selectedEvent = eventOptions.find((option) => option.value === form.event_id) ?? null;
 
+  const eventNameMap = useMemo(
+    () => new Map(verifiedEvents.map((e) => [e.wix_event_id, e.wix_event_name ?? null])),
+    [verifiedEvents],
+  );
+
   const handleToggle = async (k: KioskRecord) => {
     if (!adminApiKey.trim()) {
       toast.error(t("home.kiosks.adminKeyRequired", "Enter the admin API key first"));
@@ -324,7 +329,7 @@ export default function KioskQRSection(): JSX.Element {
                         <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
                           <div>
                             <div className="text-xs uppercase tracking-wide">{t("home.kiosks.eventLabel", "Verified event")}</div>
-                            <div className="font-medium text-foreground">{k.event_id}</div>
+                            <div className="font-medium text-foreground">{eventNameMap.get(k.event_id) ?? k.event_id}</div>
                           </div>
                           <div>
                             <div className="text-xs uppercase tracking-wide">{t("home.kiosks.stationLabel", "Station ID")}</div>
@@ -366,7 +371,7 @@ export default function KioskQRSection(): JSX.Element {
             <div className="flex items-start justify-between">
               <div>
                 <h4 className="text-lg font-medium">{selected.kiosk.name ?? selected.kiosk.kiosk_id}</h4>
-                <div className="text-sm text-muted-foreground">{selected.kiosk.site_id || t("home.kiosks.notAvailable", "Not available")} • {selected.kiosk.event_id}</div>
+                <div className="text-sm text-muted-foreground">{selected.kiosk.site_id || t("home.kiosks.notAvailable", "Not available")} • {eventNameMap.get(selected.kiosk.event_id) ?? selected.kiosk.event_id}</div>
               </div>
               <Button variant="ghost" className="h-8 px-3 text-xs" onClick={() => setSelected(null)}>{t("home.kiosks.close", "Close")}</Button>
             </div>

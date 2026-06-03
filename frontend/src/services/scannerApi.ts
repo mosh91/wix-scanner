@@ -241,11 +241,14 @@ async function validateKioskQR(payload: string): Promise<BootstrapSessionRespons
   } catch {
     throw new Error("QR de arranque inválido o expirado.");
   }
-  const response = await fetch(`${API_BASE}/admin/bootstrap-credentials/validate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ signed_token: decoded.t }),
-  });
+  const [response, eventsResp] = await Promise.all([
+    fetch(`${API_BASE}/admin/bootstrap-credentials/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signed_token: decoded.t }),
+    }),
+    fetch(`${API_BASE}/admin/events`).catch(() => null),
+  ]);
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
     const detail = (errData as { detail?: string | { reason?: string } }).detail;
@@ -259,9 +262,15 @@ async function validateKioskQR(payload: string): Promise<BootstrapSessionRespons
     station_id: string;
     expires_at: string;
   };
+  let event_name: string | undefined;
+  if (eventsResp?.ok) {
+    const events = await eventsResp.json().catch(() => []) as VerifiedEventRecord[];
+    event_name = events.find((e) => e.wix_event_id === result.event_id)?.wix_event_name ?? undefined;
+  }
   return {
     bootstrap_session_id: result.credential_id,
     event_id: result.event_id,
+    event_name,
     station_id: result.station_id,
     expires_at: Math.floor(new Date(result.expires_at).getTime() / 1000),
     is_admin_override: false,
