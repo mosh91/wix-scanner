@@ -940,6 +940,24 @@ export async function listEvents(): Promise<EventRecord[]> {
   return (await response.json()) as EventRecord[];
 }
 
+export type WixEventPreview = {
+  wix_event_id: string;
+  name: string;
+};
+
+export type ListWixEventsResponse = {
+  site_id: string;
+  site_display_name: string | null;
+  events: WixEventPreview[];
+};
+
+export async function listWixEvents(includeDrafts = false): Promise<ListWixEventsResponse> {
+  const params = includeDrafts ? "?include_drafts=true" : "";
+  const response = await fetch(`${API_BASE}/admin/integrations/wix-events${params}`);
+  if (!response.ok) throw new Error(`List Wix events failed: ${response.status}`);
+  return (await response.json()) as ListWixEventsResponse;
+}
+
 export async function deleteEvent(eventId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/admin/event-blocks/events/${eventId}`, {
     method: "DELETE",

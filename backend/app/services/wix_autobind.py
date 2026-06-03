@@ -134,6 +134,23 @@ class WixAutobindService:
 
         return events
 
+    def list_wix_events(self, *, include_drafts: bool = False) -> tuple[str, str | None, list[dict[str, str]]]:
+        """Query Wix for events and return them without writing anything to the database."""
+        site_id, site_display_name, _ = self._resolve_app_instance()
+        raw_events = self._query_events(include_drafts=include_drafts)
+        events: list[dict[str, str]] = []
+        for item in raw_events:
+            wix_event_id = self._extract_text(item.get("id"))
+            if not wix_event_id:
+                continue
+            title = (
+                self._extract_text(item.get("title"))
+                or self._extract_text(item.get("slug"))
+                or wix_event_id
+            )
+            events.append({"wix_event_id": wix_event_id, "name": title})
+        return site_id, site_display_name, events
+
     def autobind(self, *, actor: str, include_drafts: bool = False, dry_run: bool = False) -> WixAutobindResult:
         site_id, site_display_name, app_instance_id = self._resolve_app_instance()
         if site_display_name:

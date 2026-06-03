@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
 from app.services.wix_autobind import WixAutobindResult, WixAutobindService
@@ -39,6 +39,33 @@ def _to_response(result: WixAutobindResult) -> AutobindResponse:
         existing_bindings=result.existing_bindings,
         event_ids=result.event_ids,
         binding_ids=result.binding_ids,
+    )
+
+
+class WixEventPreview(BaseModel):
+    wix_event_id: str
+    name: str
+
+
+class ListWixEventsResponse(BaseModel):
+    site_id: str
+    site_display_name: str | None
+    events: list[WixEventPreview]
+
+
+@router.get(
+    "/integrations/wix-events",
+    response_model=ListWixEventsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List events from Wix without importing them locally",
+)
+def list_wix_events(include_drafts: bool = Query(default=False)) -> ListWixEventsResponse:
+    service = WixAutobindService()
+    site_id, site_display_name, events = service.list_wix_events(include_drafts=include_drafts)
+    return ListWixEventsResponse(
+        site_id=site_id,
+        site_display_name=site_display_name,
+        events=[WixEventPreview(**e) for e in events],
     )
 
 

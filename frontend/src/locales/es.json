@@ -207,7 +207,7 @@
       "title": "Integraciones",
       "description": "Use la instancia de la app Wix desde .env para obtener el sitio, importar eventos y gestionar bindings sitio-evento.",
       "helpButton": "Como completar esto",
-      "autobind": "Autobinding desde Wix",
+      "autobind": "Seleccionar eventos de Wix",
       "autobinding": "Obteniendo datos desde Wix...",
       "sitePlaceholder": "site-id",
       "eventPlaceholder": "event-id",
@@ -234,10 +234,10 @@
       "cancel": "Cancelar"
     },
     "autobindModal": {
-      "title": "Seleccionar eventos para binding",
-      "description": "Elija los eventos para los que desea crear bindings. Los eventos ya vinculados se muestran con una etiqueta.",
-      "loading": "Cargando eventos...",
-      "noEvents": "No se encontraron eventos. Ejecute un autobind completo primero para importar eventos desde Wix.",
+      "title": "Eventos en tu sitio Wix",
+      "description": "Selecciona los eventos que quieres importar y vincular. Los ya vinculados se muestran con etiqueta.",
+      "loading": "Consultando Wix...",
+      "noEvents": "No se encontraron eventos en tu sitio Wix.",
       "alreadyBound": "Ya vinculado",
       "selected": "{{count}} evento(s) seleccionado(s)",
       "confirm": "Crear bindings",

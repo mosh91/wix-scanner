@@ -1,4 +1,4 @@
-backend/data/*
+backend/data/*.db*
 backend/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
@@ -13,3 +13,5 @@ frontend/.env
 backend/.env
 frontend/dist/
 frontend/.vite/
+backend/data/*.db-shm
+backend/data/*.db-wal

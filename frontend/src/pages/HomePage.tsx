@@ -57,6 +57,7 @@ import {
   listBootstrapCredentials,
   createBootstrapCredential,
   revokeBootstrapCredential,
+  listWixEvents,
   type AuthMode,
   type ApiKeySettingsResponse,
   type AuthTokenStatusResponse,
@@ -72,6 +73,7 @@ import {
   type ReconciliationItemRecord,
   type ReconciliationRunRecord,
   type VerifiedEventRecord,
+  type WixEventPreview,
   type WixSyncControlRecord,
   type WixScopeAuditRecord,
   type WebhookDeliveryRecord,
@@ -121,6 +123,7 @@ export default function HomePage() {
   const [isAutobindModalOpen, setIsAutobindModalOpen] = useState(false);
   const [selectedAutobindEventIds, setSelectedAutobindEventIds] = useState<Set<string>>(new Set());
   const [loadingAutobindModal, setLoadingAutobindModal] = useState(false);
+  const [wixEventPreviewList, setWixEventPreviewList] = useState<WixEventPreview[]>([]);
   const [eventToDelete, setEventToDelete] = useState<{ event_id: string; name: string } | null>(null);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [wixAccountId, setWixAccountId] = useState("");
@@ -500,11 +503,11 @@ export default function HomePage() {
     setIsAutobindModalOpen(true);
     setLoadingAutobindModal(true);
     try {
-      const [events, currentBindings] = await Promise.all([listEvents(), listSiteEventBindings()]);
-      setEventConfigList(events);
+      const [wixData, currentBindings] = await Promise.all([listWixEvents(), listSiteEventBindings()]);
+      setWixEventPreviewList(wixData.events);
       setBindings(currentBindings);
       const boundWixIds = new Set(currentBindings.map((b) => b.wix_event_id));
-      setSelectedAutobindEventIds(new Set(events.filter((e) => !boundWixIds.has(e.wix_event_id)).map((e) => e.wix_event_id)));
+      setSelectedAutobindEventIds(new Set(wixData.events.filter((e) => !boundWixIds.has(e.wix_event_id)).map((e) => e.wix_event_id)));
     } catch {
       toast.error(t("home.bindings.loadError"));
     } finally {
@@ -513,16 +516,11 @@ export default function HomePage() {
   };
 
   const handleConfirmAutobindModal = async () => {
-    const siteId = bindings[0]?.wix_site_id;
-    if (!siteId || selectedAutobindEventIds.size === 0) {
-      // No local events yet — fall back to full autobind which imports from Wix and binds everything
-      setIsAutobindModalOpen(false);
-      await handleAutobind();
-      return;
-    }
+    if (selectedAutobindEventIds.size === 0) return;
     try {
-      // dry_run re-imports any events deleted locally that still exist on Wix, without creating bindings
-      await autobindIntegrations("operator-ui", true);
+      // dry_run imports all events to local DB without creating bindings; also resolves site_id
+      const autobindResult = await autobindIntegrations("operator-ui", true);
+      const siteId = bindings[0]?.wix_site_id || autobindResult.site_id;
       await Promise.all(
         [...selectedAutobindEventIds].map((wixEventId) =>
           createSiteEventBinding({ wix_site_id: siteId, wix_event_id: wixEventId, actor: "operator-ui", verify_immediately: true }),
@@ -2351,16 +2349,16 @@ export default function HomePage() {
             <div className="flex-1 overflow-y-auto px-5 py-4">
               {loadingAutobindModal ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">{t("home.autobindModal.loading")}</div>
-              ) : eventConfigList.length === 0 ? (
+              ) : wixEventPreviewList.length === 0 ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">{t("home.autobindModal.noEvents")}</div>
               ) : (
                 <div className="space-y-2">
-                  {eventConfigList.map((event) => {
+                  {wixEventPreviewList.map((event) => {
                     const alreadyBound = bindings.some((b) => b.wix_event_id === event.wix_event_id);
                     const checked = selectedAutobindEventIds.has(event.wix_event_id);
                     return (
                       <label
-                        key={event.event_id}
+                        key={event.wix_event_id}
                         className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3 hover:bg-muted/40"
                       >
                         <input
@@ -2404,7 +2402,7 @@ export default function HomePage() {
                 <Button variant="secondary" onClick={() => setIsAutobindModalOpen(false)}>
                   {t("home.autobindModal.cancel")}
                 </Button>
-                <Button onClick={() => void handleConfirmAutobindModal()} disabled={selectedAutobindEventIds.size === 0 && eventConfigList.length > 0}>
+                <Button onClick={() => void handleConfirmAutobindModal()} disabled={selectedAutobindEventIds.size === 0}>
                   {t("home.autobindModal.confirm")}
                 </Button>
               </div>
