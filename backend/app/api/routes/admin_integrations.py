@@ -11,6 +11,7 @@ router = APIRouter(prefix="/admin")
 class AutobindRequest(BaseModel):
     actor: str = Field(default="operator-ui", min_length=2, max_length=128)
     include_drafts: bool = False
+    dry_run: bool = False
 
 
 class AutobindResponse(BaseModel):
@@ -49,5 +50,5 @@ def _to_response(result: WixAutobindResult) -> AutobindResponse:
 )
 def autobind_integrations(request: AutobindRequest) -> AutobindResponse:
     service = WixAutobindService()
-    result = service.autobind(actor=request.actor, include_drafts=request.include_drafts)
+    result = service.autobind(actor=request.actor, include_drafts=request.include_drafts, dry_run=request.dry_run)
     return _to_response(result)

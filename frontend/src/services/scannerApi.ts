@@ -401,11 +401,11 @@ export async function listSiteEventBindings(): Promise<SiteEventBindingRecord[]>
   return (await response.json()) as SiteEventBindingRecord[];
 }
 
-export async function autobindIntegrations(actor = "operator-ui"): Promise<AutobindIntegrationsResponse> {
+export async function autobindIntegrations(actor = "operator-ui", dryRun = false): Promise<AutobindIntegrationsResponse> {
   const response = await fetch(`${API_BASE}/admin/integrations/autobind`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actor }),
+    body: JSON.stringify({ actor, dry_run: dryRun }),
   });
   if (!response.ok) {
     throw new Error(`Autobind integrations failed with status ${response.status}`);

@@ -134,7 +134,7 @@ class WixAutobindService:
 
         return events
 
-    def autobind(self, *, actor: str, include_drafts: bool = False) -> WixAutobindResult:
+    def autobind(self, *, actor: str, include_drafts: bool = False, dry_run: bool = False) -> WixAutobindResult:
         site_id, site_display_name, app_instance_id = self._resolve_app_instance()
         if site_display_name:
             self._binding_service._upsert_wix_site_name(site_id, site_display_name)
@@ -164,22 +164,23 @@ class WixAutobindService:
                 imported_count += 1
             event_ids.append(wix_event_id)
 
-            binding = self._binding_service.get_binding_by_event_id(wix_event_id)
-            if binding is None:
-                binding = self._binding_service.create_binding(
-                    wix_site_id=site_id,
-                    wix_event_id=wix_event_id,
-                    created_by_actor=actor,
-                    verify_immediately=True,
-                )
-                created_binding_count += 1
-            else:
-                existing_binding_count += 1
-                binding = self._binding_service.verify_binding(binding_id=binding.binding_id, verified_by_actor=actor)
+            if not dry_run:
+                binding = self._binding_service.get_binding_by_event_id(wix_event_id)
+                if binding is None:
+                    binding = self._binding_service.create_binding(
+                        wix_site_id=site_id,
+                        wix_event_id=wix_event_id,
+                        created_by_actor=actor,
+                        verify_immediately=True,
+                    )
+                    created_binding_count += 1
+                else:
+                    existing_binding_count += 1
+                    binding = self._binding_service.verify_binding(binding_id=binding.binding_id, verified_by_actor=actor)
 
-            if binding.status == "verified":
-                verified_binding_count += 1
-            binding_ids.append(binding.binding_id)
+                if binding.status == "verified":
+                    verified_binding_count += 1
+                binding_ids.append(binding.binding_id)
 
         return WixAutobindResult(
             site_id=site_id,

@@ -1,4 +1,5 @@
 import KioskQRSection from "../components/KioskQRSection";
+import { BlockForm } from "../components/BlockForm";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
@@ -117,6 +118,10 @@ export default function HomePage() {
   const [isAuthModeGuideExpanded, setIsAuthModeGuideExpanded] = useState(false);
   const [isAutobinding, setIsAutobinding] = useState(false);
   const [showCreateForms, setShowCreateForms] = useState(false);
+  const [isAutobindModalOpen, setIsAutobindModalOpen] = useState(false);
+  const [selectedAutobindEventIds, setSelectedAutobindEventIds] = useState<Set<string>>(new Set());
+  const [loadingAutobindModal, setLoadingAutobindModal] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<{ event_id: string; name: string } | null>(null);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [wixAccountId, setWixAccountId] = useState("");
   const [testingApiKey, setTestingApiKey] = useState(false);
@@ -161,12 +166,6 @@ export default function HomePage() {
   const [loadingBlocksMap, setLoadingBlocksMap] = useState<Record<string, boolean>>({});
   const [newEventWixId, setNewEventWixId] = useState("");
   const [newEventName, setNewEventName] = useState("");
-  const [newBlockCode, setNewBlockCode] = useState("");
-  const [newBlockName, setNewBlockName] = useState("");
-  const [newBlockStartsAt, setNewBlockStartsAt] = useState("");
-  const [newBlockEndsAt, setNewBlockEndsAt] = useState("");
-  const [newBlockGracePeriod, setNewBlockGracePeriod] = useState(0);
-  const [newBlockPriority, setNewBlockPriority] = useState(100);
   const [eventConfigError, setEventConfigError] = useState<string | null>(null);
 
   // Reset state
@@ -281,32 +280,17 @@ export default function HomePage() {
     }
   }, [selectedEventForBlocks]);
 
-  const handleAddBlock = useCallback(async (eventId: string) => {
-    if (!newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt) return;
+  const handleAddBlock = useCallback(async (eventId: string, data: import("@/components/BlockForm").BlockFormData) => {
     setEventConfigError(null);
     try {
-      await createBlock(eventId, {
-        block_code: newBlockCode.trim(),
-        name: newBlockName.trim() || newBlockCode.trim(),
-        starts_at: newBlockStartsAt,
-        ends_at: newBlockEndsAt,
-        grace_period_minutes: newBlockGracePeriod,
-        priority: newBlockPriority,
-        actor: "operator-ui",
-      });
-      setNewBlockCode("");
-      setNewBlockName("");
-      setNewBlockStartsAt("");
-      setNewBlockEndsAt("");
-      setNewBlockGracePeriod(0);
-      setNewBlockPriority(100);
+      await createBlock(eventId, data);
       setSelectedEventForBlocks(null);
       await loadBlocks(eventId);
       toast.success("Block added");
     } catch (err) {
       setEventConfigError(err instanceof Error ? err.message : "Failed to create block");
     }
-  }, [newBlockCode, newBlockName, newBlockStartsAt, newBlockEndsAt, newBlockGracePeriod, newBlockPriority, loadBlocks]);
+  }, [loadBlocks]);
 
   const handleDeleteBlock = useCallback(async (blockId: string, eventId: string) => {
     try {
@@ -512,6 +496,47 @@ export default function HomePage() {
       toast.error(err instanceof Error ? err.message : "Failed to autobind Wix integrations");
     } finally {
       setIsAutobinding(false);
+    }
+  };
+
+  const handleOpenAutobindModal = async () => {
+    setIsAutobindModalOpen(true);
+    setLoadingAutobindModal(true);
+    try {
+      const [events, currentBindings] = await Promise.all([listEvents(), listSiteEventBindings()]);
+      setEventConfigList(events);
+      setBindings(currentBindings);
+      const boundWixIds = new Set(currentBindings.map((b) => b.wix_event_id));
+      setSelectedAutobindEventIds(new Set(events.filter((e) => !boundWixIds.has(e.wix_event_id)).map((e) => e.wix_event_id)));
+    } catch {
+      toast.error(t("home.bindings.loadError"));
+    } finally {
+      setLoadingAutobindModal(false);
+    }
+  };
+
+  const handleConfirmAutobindModal = async () => {
+    const siteId = bindings[0]?.wix_site_id;
+    if (!siteId || selectedAutobindEventIds.size === 0) {
+      // No local events yet — fall back to full autobind which imports from Wix and binds everything
+      setIsAutobindModalOpen(false);
+      await handleAutobind();
+      return;
+    }
+    try {
+      // dry_run re-imports any events deleted locally that still exist on Wix, without creating bindings
+      await autobindIntegrations("operator-ui", true);
+      await Promise.all(
+        [...selectedAutobindEventIds].map((wixEventId) =>
+          createSiteEventBinding({ wix_site_id: siteId, wix_event_id: wixEventId, actor: "operator-ui", verify_immediately: true }),
+        ),
+      );
+      toast.success(t("home.bindings.createSuccess"));
+      await Promise.all([loadBindings(), loadEventConfig()]);
+    } catch {
+      toast.error(t("home.bindings.createError"));
+    } finally {
+      setIsAutobindModalOpen(false);
     }
   };
 
@@ -934,25 +959,12 @@ export default function HomePage() {
               <CardDescription>{t("home.bindings.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
-                <input
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-                  value={newSiteId}
-                  onChange={(event) => setNewSiteId(event.target.value)}
-                  placeholder={t("home.bindings.sitePlaceholder")}
-                />
-                <input
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-                  value={newEventId}
-                  onChange={(event) => setNewEventId(event.target.value)}
-                  placeholder={t("home.bindings.eventPlaceholder")}
-                />
-                <Button onClick={() => void handleCreateBinding()}>{t("home.bindings.create")}</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => void handleOpenAutobindModal()} disabled={isAutobinding || loadingAutobindModal}>
+                  {loadingAutobindModal ? t("home.bindings.autobinding") : t("home.bindings.autobind")}
+                </Button>
                 <Button variant="secondary" onClick={() => void loadBindings()} disabled={loadingBindings}>
                   {loadingBindings ? t("home.common.refreshing") : t("home.common.refresh")}
-                </Button>
-                <Button onClick={() => void handleAutobind()} disabled={isAutobinding}>
-                  {isAutobinding ? t("home.bindings.autobinding") : t("home.bindings.autobind")}
                 </Button>
               </div>
 
@@ -1272,7 +1284,7 @@ export default function HomePage() {
                               <Button
                                 className="h-7 border-red-400/50 px-3 text-xs text-red-600 hover:bg-red-500/10"
                                 variant="outline"
-                                onClick={() => void handleDeleteEvent(row.eventConfig!.event_id)}
+                                onClick={() => setEventToDelete({ event_id: row.eventConfig!.event_id, name: row.eventConfig!.name })}
                               >
                                 {t("home.eventConfig.deleteEvent")}
                               </Button>
@@ -1357,17 +1369,7 @@ export default function HomePage() {
                         </div>
 
                         {row.eventConfig && selectedEventForBlocks === row.eventConfig.event_id ? (
-                          <div className="flex flex-wrap gap-2 rounded-md border border-border/40 bg-background p-2">
-                            <input className="h-8 rounded border border-border bg-background px-2 text-xs" placeholder={t("home.eventConfig.blockCodePlaceholder")} value={newBlockCode} onChange={(e) => setNewBlockCode(e.target.value)} />
-                            <input className="h-8 rounded border border-border bg-background px-2 text-xs" placeholder={t("home.eventConfig.blockNamePlaceholder")} value={newBlockName} onChange={(e) => setNewBlockName(e.target.value)} />
-                            <input className="h-8 rounded border border-border bg-background px-2 text-xs" type="datetime-local" value={newBlockStartsAt} onChange={(e) => setNewBlockStartsAt(e.target.value)} />
-                            <input className="h-8 rounded border border-border bg-background px-2 text-xs" type="datetime-local" value={newBlockEndsAt} onChange={(e) => setNewBlockEndsAt(e.target.value)} />
-                            <input className="h-8 w-24 rounded border border-border bg-background px-2 text-xs" type="number" min={0} max={120} placeholder={t("home.eventConfig.gracePeriodPlaceholder")} title={t("home.eventConfig.gracePeriodLabel")} value={newBlockGracePeriod} onChange={(e) => setNewBlockGracePeriod(Number(e.target.value))} />
-                            <input className="h-8 w-20 rounded border border-border bg-background px-2 text-xs" type="number" min={0} placeholder={t("home.eventConfig.priorityPlaceholder")} title={t("home.eventConfig.priorityLabel")} value={newBlockPriority} onChange={(e) => setNewBlockPriority(Number(e.target.value))} />
-                            <Button className="h-8 px-3 text-xs" disabled={!newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt} onClick={() => void handleAddBlock(row.eventConfig!.event_id)}>
-                              {t("home.eventConfig.addBlock")}
-                            </Button>
-                          </div>
+                          <BlockForm onSubmit={(data) => handleAddBlock(row.eventConfig!.event_id, data)} />
                         ) : null}
 
                         {loadingBlocksMap[row.eventConfig?.event_id ?? ""] ? (
@@ -2171,7 +2173,7 @@ export default function HomePage() {
                         <Button
                           className="h-7 border-red-400/50 px-3 text-xs text-red-600 hover:bg-red-500/10"
                           variant="outline"
-                          onClick={() => void handleDeleteEvent(ev.event_id)}
+                          onClick={() => setEventToDelete({ event_id: ev.event_id, name: ev.name })}
                         >
                           {t("home.eventConfig.deleteEvent")}
                         </Button>
@@ -2238,58 +2240,7 @@ export default function HomePage() {
                       </div>
 
                       {selectedEventForBlocks === ev.event_id ? (
-                        <div className="flex flex-wrap gap-2 rounded-md border border-border/40 bg-background p-2">
-                          <input
-                            className="h-8 rounded border border-border bg-background px-2 text-xs"
-                            placeholder={t("home.eventConfig.blockCodePlaceholder")}
-                            value={newBlockCode}
-                            onChange={(e) => setNewBlockCode(e.target.value)}
-                          />
-                          <input
-                            className="h-8 rounded border border-border bg-background px-2 text-xs"
-                            placeholder={t("home.eventConfig.blockNamePlaceholder")}
-                            value={newBlockName}
-                            onChange={(e) => setNewBlockName(e.target.value)}
-                          />
-                          <input
-                            className="h-8 rounded border border-border bg-background px-2 text-xs"
-                            type="datetime-local"
-                            value={newBlockStartsAt}
-                            onChange={(e) => setNewBlockStartsAt(e.target.value)}
-                          />
-                          <input
-                            className="h-8 rounded border border-border bg-background px-2 text-xs"
-                            type="datetime-local"
-                            value={newBlockEndsAt}
-                            onChange={(e) => setNewBlockEndsAt(e.target.value)}
-                          />
-                          <input
-                            className="h-8 w-24 rounded border border-border bg-background px-2 text-xs"
-                            type="number"
-                            min={0}
-                            max={120}
-                            placeholder={t("home.eventConfig.gracePeriodPlaceholder")}
-                            title={t("home.eventConfig.gracePeriodLabel")}
-                            value={newBlockGracePeriod}
-                            onChange={(e) => setNewBlockGracePeriod(Number(e.target.value))}
-                          />
-                          <input
-                            className="h-8 w-20 rounded border border-border bg-background px-2 text-xs"
-                            type="number"
-                            min={0}
-                            placeholder={t("home.eventConfig.priorityPlaceholder")}
-                            title={t("home.eventConfig.priorityLabel")}
-                            value={newBlockPriority}
-                            onChange={(e) => setNewBlockPriority(Number(e.target.value))}
-                          />
-                          <Button
-                            className="h-8 px-3 text-xs"
-                            disabled={!newBlockCode.trim() || !newBlockStartsAt || !newBlockEndsAt}
-                            onClick={() => void handleAddBlock(ev.event_id)}
-                          >
-                            {t("home.eventConfig.addBlock")}
-                          </Button>
-                        </div>
+                        <BlockForm onSubmit={(data) => handleAddBlock(ev.event_id, data)} />
                       ) : null}
 
                       {loadingBlocksMap[ev.event_id] ? (
@@ -2372,6 +2323,109 @@ export default function HomePage() {
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {eventToDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-background shadow-xl">
+            <div className="px-5 py-4">
+              <h3 className="text-base font-semibold">{t("home.deleteEventModal.title")}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("home.deleteEventModal.body", { name: eventToDelete.name })}
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border/70 px-5 py-3">
+              <Button variant="secondary" onClick={() => setEventToDelete(null)}>
+                {t("home.deleteEventModal.cancel")}
+              </Button>
+              <Button
+                className="border-red-400/50 text-red-600 hover:bg-red-500/10"
+                variant="outline"
+                onClick={() => { void handleDeleteEvent(eventToDelete.event_id); setEventToDelete(null); }}
+              >
+                {t("home.deleteEventModal.confirm")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAutobindModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="flex max-h-[80vh] w-full max-w-xl flex-col rounded-2xl border border-border bg-background shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t("home.autobindModal.title")}</h3>
+                <p className="text-sm text-muted-foreground">{t("home.autobindModal.description")}</p>
+              </div>
+              <Button className="h-8 px-3 text-xs" variant="ghost" onClick={() => setIsAutobindModalOpen(false)}>
+                {t("home.autobindModal.cancel")}
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {loadingAutobindModal ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">{t("home.autobindModal.loading")}</div>
+              ) : eventConfigList.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">{t("home.autobindModal.noEvents")}</div>
+              ) : (
+                <div className="space-y-2">
+                  {eventConfigList.map((event) => {
+                    const alreadyBound = bindings.some((b) => b.wix_event_id === event.wix_event_id);
+                    const checked = selectedAutobindEventIds.has(event.wix_event_id);
+                    return (
+                      <label
+                        key={event.event_id}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3 hover:bg-muted/40"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded accent-primary"
+                          checked={checked}
+                          disabled={alreadyBound}
+                          onChange={() => {
+                            setSelectedAutobindEventIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(event.wix_event_id)) {
+                                next.delete(event.wix_event_id);
+                              } else {
+                                next.add(event.wix_event_id);
+                              }
+                              return next;
+                            });
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{event.name}</div>
+                          <div className="truncate text-xs text-muted-foreground">{event.wix_event_id}</div>
+                        </div>
+                        {alreadyBound ? (
+                          <Badge variant="outline" className="shrink-0 text-xs text-green-600 border-green-400">
+                            {t("home.autobindModal.alreadyBound")}
+                          </Badge>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-border/70 px-5 py-4">
+              <span className="text-xs text-muted-foreground">
+                {t("home.autobindModal.selected", { count: selectedAutobindEventIds.size })}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setIsAutobindModalOpen(false)}>
+                  {t("home.autobindModal.cancel")}
+                </Button>
+                <Button onClick={() => void handleConfirmAutobindModal()} disabled={selectedAutobindEventIds.size === 0 && eventConfigList.length > 0}>
+                  {t("home.autobindModal.confirm")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {isBindingHelpOpen ? (
