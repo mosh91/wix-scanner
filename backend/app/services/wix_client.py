@@ -141,6 +141,7 @@ class WixClient:
                         "eventId": event_id,
                         "offset": offset,
                         "limit": normalized_limit,
+                        "fieldset": "TICKET_DETAILS",
                     },
                 )
 
