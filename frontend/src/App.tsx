@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { LayoutDashboard, ScanBarcode, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
@@ -6,6 +6,18 @@ import { useLocation } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import HomePage from "@/pages/HomePage";
 import OperatorPage from "@/pages/OperatorPage";
+import KioskQRSection from "@/components/KioskQRSection";
+import IntegrationsTab from "@/pages/features/IntegrationsTab";
+import DeliveriesTab from "@/pages/features/DeliveriesTab";
+import DashboardTab from "@/pages/features/DashboardTab";
+import CredentialsTab from "@/pages/features/CredentialsTab";
+import AuthSettingsTab from "@/pages/features/AuthSettingsTab";
+import ApiKeyManagementTab from "@/pages/features/ApiKeyManagementTab";
+import ReadinessTab from "@/pages/features/ReadinessTab";
+import SyncControlsTab from "@/pages/features/SyncControlsTab";
+import ReconciliationTab from "@/pages/features/ReconciliationTab";
+import SecretRotationTab from "@/pages/features/SecretRotationTab";
+import RelayManagementTab from "@/pages/features/RelayManagementTab";
 
 const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
   [
@@ -18,8 +30,9 @@ const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
 export default function App() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
+  const isOperator = location.pathname.startsWith("/operator");
 
-  if (location.pathname === "/operator") {
+  if (isOperator) {
     return (
       <Routes>
         <Route path="/operator" element={<OperatorPage />} />
@@ -45,10 +58,10 @@ export default function App() {
           </div>
 
           <nav className="flex items-center gap-2">
-            <NavLink to="/" className={navLinkClassName} end>
+            <Link to="/integrations" className={navLinkClassName({ isActive: !isOperator })}>
               <LayoutDashboard aria-hidden="true" className="size-4" />
               {t("nav.home")}
-            </NavLink>
+            </Link>
             <NavLink to="/operator" className={navLinkClassName}>
               <ShieldCheck aria-hidden="true" className="size-4" />
               {t("nav.operator")}
@@ -62,7 +75,21 @@ export default function App() {
           <Badge variant="outline">{t("layout.controlCenter")}</Badge>
         </div>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<HomePage />}>
+            <Route index element={<Navigate to="integrations" replace />} />
+            <Route path="dashboard" element={<DashboardTab />} />
+            <Route path="integrations" element={<IntegrationsTab />} />
+            <Route path="deliveries" element={<DeliveriesTab />} />
+            <Route path="credentials" element={<CredentialsTab />} />
+            <Route path="auth-settings" element={<AuthSettingsTab />} />
+            <Route path="api-key-management" element={<ApiKeyManagementTab />} />
+            <Route path="readiness" element={<ReadinessTab />} />
+            <Route path="sync-controls" element={<SyncControlsTab />} />
+            <Route path="reconciliation" element={<ReconciliationTab />} />
+            <Route path="secret-rotation" element={<SecretRotationTab />} />
+            <Route path="relay-management" element={<RelayManagementTab />} />
+            <Route path="kiosk-qr" element={<KioskQRSection />} />
+          </Route>
           <Route path="/operator" element={<OperatorPage />} />
         </Routes>
       </main>
