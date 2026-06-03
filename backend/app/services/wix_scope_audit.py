@@ -7,8 +7,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import Column, String, func, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import String, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.core.config import Settings, get_settings
 from app.db import make_engine
@@ -16,9 +16,9 @@ from app.services.credentials import get_credential_provider
 from app.services.site_event_binding import SiteEventBindingService, get_site_event_binding_service
 
 REQUIRED_WIX_PERMISSIONS: tuple[str, ...] = (
-    "WIX_EVENTS.READ_TICKETS",
-    "WIX_EVENTS.CHECK-IN",
-    "WIX_EVENTS.READ_EVENTS",
+    "SCOPE.DC-EVENTS.READ-EVENTS",
+    "SCOPE.DC-EVENTS.READ-GUEST-LIST",
+    "SCOPE.DC-EVENTS.MANAGE-EVENTS",
 )
 
 
@@ -38,24 +38,25 @@ class WixScopeAuditRecord:
     created_at: str
 
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class _WixScopeAuditRow(Base):
     __tablename__ = "wix_scope_audit"
 
-    audit_id = Column(String, primary_key=True)
-    binding_id = Column(String, nullable=False, index=True)
-    wix_site_id = Column(String, nullable=False)
-    wix_event_id = Column(String, nullable=False)
-    required_scopes = Column(String, nullable=False)   # JSON array
-    verified_scopes = Column(String, nullable=False)   # JSON array
-    missing_scopes = Column(String, nullable=False)    # JSON array
-    status = Column(String, nullable=False)
-    alert_reason = Column(String, nullable=True)
-    scopes_verified_at = Column(String, nullable=False)
-    verified_by_actor = Column(String, nullable=False)
-    created_at = Column(String, nullable=False, index=True)
+    audit_id: Mapped[str] = mapped_column(String, primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    wix_site_id: Mapped[str] = mapped_column(String, nullable=False)
+    wix_event_id: Mapped[str] = mapped_column(String, nullable=False)
+    required_scopes: Mapped[str] = mapped_column(String, nullable=False)   # JSON array
+    verified_scopes: Mapped[str] = mapped_column(String, nullable=False)   # JSON array
+    missing_scopes: Mapped[str] = mapped_column(String, nullable=False)    # JSON array
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    alert_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    scopes_verified_at: Mapped[str] = mapped_column(String, nullable=False)
+    verified_by_actor: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
 
 class WixScopeAuditService:
@@ -106,7 +107,7 @@ class WixScopeAuditService:
             if not wix_site_id.startswith("site-"):
                 return []
             if wix_site_id.endswith("-missing-scopes"):
-                return ["WIX_EVENTS.CHECK-IN", "WIX_EVENTS.READ_EVENTS"]
+                return ["SCOPE.DC-EVENTS.MANAGE-EVENTS", "SCOPE.DC-EVENTS.READ-EVENTS"]
             return list(REQUIRED_WIX_PERMISSIONS)
         return self._fetch_live_permissions()
 

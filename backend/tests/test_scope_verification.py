@@ -56,9 +56,9 @@ def test_scope_verification_green_when_permissions_complete(admin_scope_client):
     assert body["status"] == "green"
     assert body["missing_scopes"] == []
     assert sorted(body["required_scopes"]) == [
-        "WIX_EVENTS.CHECK-IN",
-        "WIX_EVENTS.READ_EVENTS",
-        "WIX_EVENTS.READ_TICKETS",
+        "SCOPE.DC-EVENTS.MANAGE-EVENTS",
+        "SCOPE.DC-EVENTS.READ-EVENTS",
+        "SCOPE.DC-EVENTS.READ-GUEST-LIST",
     ]
 
 
@@ -74,7 +74,7 @@ def test_scope_verification_warning_when_scope_missing(admin_scope_client):
     assert verify.status_code == 200
     body = verify.json()
     assert body["status"] == "warning"
-    assert "WIX_EVENTS.READ_TICKETS" in body["missing_scopes"]
+    assert "SCOPE.DC-EVENTS.READ-GUEST-LIST" in body["missing_scopes"]
     assert body["alert_reason"] is not None
 
 
