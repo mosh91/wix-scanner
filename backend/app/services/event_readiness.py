@@ -6,6 +6,7 @@ from typing import Literal
 
 from app.core.config import get_settings
 from app.services.credential_lifecycle import CredentialLifecycleRecord, get_credential_lifecycle_service
+from app.services.wix_oauth import get_wix_oauth_service
 from app.services.offline_queue import get_offline_queue_service
 from app.services.site_event_binding import get_site_event_binding_service
 from app.services.ticket_manifest import get_ticket_manifest_service
@@ -79,6 +80,59 @@ class EventReadinessService:
         )
 
     def _evaluate_credentials(self) -> ReadinessComponentStatus:
+        mode = self._settings.credential_provider_mode
+
+        if mode == "oauth":
+            oauth_status = get_wix_oauth_service().get_token_status()
+            status_val = oauth_status.get("status", "missing")
+            configured = oauth_status.get("configured", False)
+            if not configured:
+                return self._component(
+                    "credentials",
+                    "critical",
+                    "OAuth credentials are not configured (WIX_SCANNER_WIX_APP_ID, WIX_SCANNER_WIX_APP_SECRET, WIX_SCANNER_WIX_APP_INSTANCE_ID).",
+                    oauth_status=status_val,
+                )
+            if status_val in ("missing", "expired"):
+                return self._component(
+                    "credentials",
+                    "critical",
+                    f"OAuth token is {status_val}. The backend will retry automatically.",
+                    oauth_status=status_val,
+                    last_error=oauth_status.get("last_error"),
+                )
+            if status_val == "expiring_soon":
+                return self._component(
+                    "credentials",
+                    "degraded",
+                    "OAuth token is expiring soon.",
+                    oauth_status=status_val,
+                    expires_at=oauth_status.get("expires_at"),
+                )
+            return self._component(
+                "credentials",
+                "ready",
+                "OAuth token is healthy.",
+                oauth_status=status_val,
+                expires_at=oauth_status.get("expires_at"),
+            )
+
+        if mode == "env":
+            if not self._settings.wix_api_token:
+                return self._component(
+                    "credentials",
+                    "critical",
+                    "WIX_SCANNER_WIX_API_TOKEN is not set.",
+                    credential_provider_mode="env",
+                )
+            return self._component(
+                "credentials",
+                "ready",
+                "Static Wix API token is configured.",
+                credential_provider_mode="env",
+            )
+
+        # mode == "db": check credential lifecycle records
         credentials = self._credential_service.list_credentials()
         active_credentials: list[CredentialLifecycleRecord] = []
         expiring_credentials: list[str] = []
@@ -169,6 +223,7 @@ class EventReadinessService:
                 "manifest",
                 "critical",
                 "The ticket manifest has not been synced yet.",
+                detail_key="manifest_not_synced",
                 last_known_sync_ts=status.last_known_sync_ts,
                 source_revision=status.source_revision,
             )
@@ -177,6 +232,7 @@ class EventReadinessService:
                 "manifest",
                 "degraded",
                 "The ticket manifest is stale and should be refreshed before doors open.",
+                detail_key="manifest_stale",
                 last_known_sync_ts=status.last_known_sync_ts,
                 source_revision=status.source_revision,
                 total_tickets=status.total_tickets,
@@ -185,6 +241,7 @@ class EventReadinessService:
             "manifest",
             "ready",
             "The ticket manifest is fresh.",
+            detail_key="manifest_ready",
             last_known_sync_ts=status.last_known_sync_ts,
             source_revision=status.source_revision,
             total_tickets=status.total_tickets,
@@ -193,10 +250,13 @@ class EventReadinessService:
     def _evaluate_redis_cache(self, event_id: str) -> ReadinessComponentStatus:
         sample_tickets = self._manifest_service.list_tickets(event_id=event_id, limit=3)
         if not sample_tickets:
+            # Manifest not synced yet — the manifest check already owns this failure.
+            # Returning ready here avoids redundant double-critical for the same root cause.
             return self._component(
                 "redis_cache",
-                "critical",
-                "No manifest tickets are available to warm the local cache.",
+                "ready",
+                "Cache check skipped — manifest not synced yet.",
+                detail_key="cache_check_skipped",
                 event_id=event_id,
             )
 
@@ -209,6 +269,7 @@ class EventReadinessService:
                 "redis_cache",
                 "critical",
                 "The local Redis manifest cache is not warmed.",
+                detail_key="cache_not_warmed",
                 event_id=event_id,
                 sample_tickets=[ticket.ticket_number for ticket in sample_tickets],
             )
@@ -217,6 +278,7 @@ class EventReadinessService:
             "redis_cache",
             "ready",
             "The local Redis manifest cache is warmed.",
+            detail_key="cache_ready",
             event_id=event_id,
             sample_tickets=[ticket.ticket_number for ticket in sample_tickets],
         )

@@ -225,7 +225,17 @@
       "verifySuccess": "Verification executed",
       "verifyError": "Could not verify binding",
       "activateSuccess": "Event activated",
-      "activateError": "Activation blocked: event has no verified binding"
+      "activateError": "Could not activate event",
+      "activateBlocked": "Activation blocked: {{checks}}",
+      "readinessChecks": {
+        "binding": "binding",
+        "credentials": "credentials",
+        "scopes": "scopes",
+        "manifest": "manifest",
+        "redis_cache": "local cache",
+        "backend": "backend",
+        "worker": "workers"
+      }
     },
     "deleteEventModal": {
       "title": "Delete event?",
@@ -456,6 +466,14 @@
         "redis_cache": "Redis cache warming",
         "backend": "Backend connectivity",
         "worker": "Worker health"
+      },
+      "details": {
+        "manifest_not_synced": "Manifest not synced yet. Click Sync Manifest to fetch tickets from Wix.",
+        "manifest_stale": "Manifest is stale. Sync it before doors open.",
+        "manifest_ready": "Manifest is fresh.",
+        "cache_not_warmed": "Redis cache is not warmed. Re-sync the manifest to fix this.",
+        "cache_check_skipped": "Waiting for manifest sync.",
+        "cache_ready": "Cache is warmed."
       },
       "helpButton": "How to read this",
       "helpModal": {

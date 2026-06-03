@@ -433,6 +433,17 @@ export async function listVerifiedEvents(): Promise<VerifiedEventRecord[]> {
   return (await response.json()) as VerifiedEventRecord[];
 }
 
+export class ActivateEventBlockedError extends Error {
+  failedChecks: string[];
+  recommendedActions: string[];
+  constructor(message: string, failedChecks: string[], recommendedActions: string[]) {
+    super(message);
+    this.name = "ActivateEventBlockedError";
+    this.failedChecks = failedChecks;
+    this.recommendedActions = recommendedActions;
+  }
+}
+
 export async function activateEvent(
   wixEventId: string,
   actor = "operator-ui",
@@ -444,6 +455,15 @@ export async function activateEvent(
     body: JSON.stringify({ actor, readiness_acknowledged: readinessAcknowledged }),
   });
   if (!response.ok) {
+    if (response.status === 409) {
+      const body = await response.json().catch(() => ({})) as { detail?: { message?: string; failed_checks?: string[]; recommended_actions?: string[] } };
+      const detail = body.detail ?? {};
+      throw new ActivateEventBlockedError(
+        detail.message ?? "Event activation was blocked by readiness checks.",
+        detail.failed_checks ?? [],
+        detail.recommended_actions ?? [],
+      );
+    }
     throw new Error(`Activate event failed with status ${response.status}`);
   }
   return (await response.json()) as ActivateEventResponse;

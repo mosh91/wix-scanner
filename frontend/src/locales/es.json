@@ -225,7 +225,17 @@
       "verifySuccess": "Verificacion ejecutada",
       "verifyError": "No se pudo verificar el binding",
       "activateSuccess": "Evento activado",
-      "activateError": "Activacion bloqueada: el evento no tiene binding verificado"
+      "activateError": "No se pudo activar el evento",
+      "activateBlocked": "Activacion bloqueada: {{checks}}",
+      "readinessChecks": {
+        "binding": "binding",
+        "credentials": "credenciales",
+        "scopes": "permisos",
+        "manifest": "manifiesto",
+        "redis_cache": "cache local",
+        "backend": "backend",
+        "worker": "workers"
+      }
     },
     "deleteEventModal": {
       "title": "¿Eliminar evento?",
@@ -456,6 +466,14 @@
         "redis_cache": "Cache de Redis",
         "backend": "Conectividad del backend",
         "worker": "Salud de workers"
+      },
+      "details": {
+        "manifest_not_synced": "El manifiesto no ha sido sincronizado. Haz clic en Sincronizar manifest para obtener los tickets de Wix.",
+        "manifest_stale": "El manifiesto está desactualizado. Sincronízalo antes de abrir puertas.",
+        "manifest_ready": "El manifiesto está actualizado.",
+        "cache_not_warmed": "El cache de Redis no está calentado. Vuelve a sincronizar el manifiesto para resolverlo.",
+        "cache_check_skipped": "Esperando sincronización del manifiesto.",
+        "cache_ready": "El cache está calentado."
       },
       "helpButton": "Como leer esto",
       "helpModal": {

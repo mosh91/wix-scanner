@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   activateCredential,
   activateEvent,
+  ActivateEventBlockedError,
   autobindIntegrations,
   createCredential,
   createEvent,
@@ -549,8 +550,15 @@ export default function HomePage() {
     try {
       await activateEvent(wixEventId, "operator-ui");
       toast.success(t("home.bindings.activateSuccess"));
-    } catch {
-      toast.error(t("home.bindings.activateError"));
+    } catch (err) {
+      if (err instanceof ActivateEventBlockedError && err.failedChecks.length > 0) {
+        const checks = err.failedChecks
+          .map((c) => t(`home.bindings.readinessChecks.${c}`, { defaultValue: c }))
+          .join(", ");
+        toast.error(t("home.bindings.activateBlocked", { checks }));
+      } else {
+        toast.error(t("home.bindings.activateError"));
+      }
     }
   };
 
@@ -1724,7 +1732,9 @@ export default function HomePage() {
                   </div>
                   {readinessReport.failed_checks.length > 0 ? (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {t("home.readiness.failedChecks")}: {readinessReport.failed_checks.join(", ")}
+                      {t("home.readiness.failedChecks")}: {readinessReport.failed_checks
+                        .map((c) => t(`home.bindings.readinessChecks.${c}`, { defaultValue: c }))
+                        .join(", ")}
                     </p>
                   ) : null}
                   {readinessReport.recommended_actions.length > 0 ? (
@@ -1743,7 +1753,11 @@ export default function HomePage() {
                           {t(`home.readiness.statuses.${component.status}`)}
                         </Badge>
                       </div>
-                      <p className="mt-2 text-sm text-muted-foreground">{component.message}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {typeof component.details?.detail_key === "string"
+                          ? t(`home.readiness.details.${component.details.detail_key}`, { defaultValue: component.message })
+                          : component.message}
+                      </p>
                     </div>
                   ))}
                 </div>
