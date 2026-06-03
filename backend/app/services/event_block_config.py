@@ -266,7 +266,7 @@ class EventBlockConfigService:
         rows = session.execute(
             select(_EventBlockRow)
             .where(_EventBlockRow.event_id == event_id)
-            .where(_EventBlockRow.is_active == 1)
+            .where(_EventBlockRow.is_active == True)
         ).scalars().all()
         new_start = datetime.fromisoformat(starts_at)
         new_end = datetime.fromisoformat(ends_at)
@@ -598,7 +598,7 @@ class EventBlockConfigService:
             rows = session.execute(
                 select(_EventBlockRow)
                 .where(_EventBlockRow.event_id == event_id)
-                .where(_EventBlockRow.is_active == 1)
+                .where(_EventBlockRow.is_active == True)
             ).scalars().all()
             blocks = [self._row_to_block(r) for r in rows]
 

@@ -322,6 +322,37 @@ export async function fetchScannerHealth(eventId?: string): Promise<ScannerHealt
   return (await response.json()) as ScannerHealthResponse;
 }
 
+export type ScannerMetricRecord = {
+  timestamp: number;
+  session_id: string;
+  operator_id: string;
+  response_time_ms: number;
+  success: boolean;
+  status: string;
+  error_code: string;
+  concurrent_count: number;
+  scanner_status: string;
+  ticket_number: string;
+  source: string;
+  wix_status: string;
+};
+
+export async function fetchScannerMetrics(): Promise<ScannerMetricRecord[]> {
+  const response = await fetch(`${API_BASE}/health/scanner/metrics`);
+  if (!response.ok) {
+    throw new Error(`Metrics fetch failed with status ${response.status}`);
+  }
+  return (await response.json()) as ScannerMetricRecord[];
+}
+
+export async function getManifestStatus(eventId: string): Promise<ManifestSyncResponse> {
+  const response = await fetch(`${API_BASE}/manifest/events/${encodeURIComponent(eventId)}/status`);
+  if (!response.ok) {
+    throw new Error(`Manifest status failed with status ${response.status}`);
+  }
+  return (await response.json()) as ManifestSyncResponse;
+}
+
 export async function validateBootstrapQR(
   request: BootstrapValidateRequest,
 ): Promise<BootstrapSessionResponse> {

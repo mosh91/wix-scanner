@@ -86,8 +86,7 @@ class TicketManifestService:
             return sorted(self._tracked_event_ids)
 
     def _sync_horizon_seconds(self) -> int:
-        # Degraded if no successful sync in the last 30s by default.
-        return 30
+        return 300
 
     def sync_event_from_wix(self, event_id: str) -> ManifestSyncStatus:
         self.track_event(event_id)

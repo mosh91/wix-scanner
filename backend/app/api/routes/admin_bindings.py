@@ -194,6 +194,13 @@ def activate_event(
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    # Auto-register manifest sync control if one has never been configured for this event.
+    from app.services.sync_controls import get_sync_control_service
+    sync_service = get_sync_control_service()
+    existing = sync_service.get_control(event_id=wix_event_id)
+    if existing.last_attempt_at is None:
+        sync_service.upsert_control(event_id=wix_event_id, enabled=True, interval_seconds=60)
+
     return EventActivationResponse(
         wix_event_id=activation.wix_event_id,
         status=activation.status,

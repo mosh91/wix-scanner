@@ -24,6 +24,7 @@ import { useKioskSession } from "@/hooks/useKioskSession";
 import { useWebHIDScannerHealth } from "@/hooks/useWebHIDScannerHealth";
 import {
   clearBootstrapSession,
+  fetchScannerMetrics,
   isBootstrapQR,
   submitScan,
   triggerManifestSync,
@@ -100,7 +101,9 @@ export default function OperatorPage() {
 
   const healthItems = useMemo(
     () => {
-      const backendStatus = backendHealth.data?.backend_status ?? (backendHealth.error ? "red" : "yellow");
+      // backend connectivity: red only when the health fetch itself fails (server unreachable).
+      // The backend_status from the API reflects scan acceptance rate, which is unrelated to connectivity.
+      const backendStatus = backendHealth.error ? "red" : backendHealth.data ? "green" : "yellow";
 
       return [
         {
@@ -168,9 +171,9 @@ export default function OperatorPage() {
       ];
     },
     [
-      backendHealth.data?.backend_status,
       backendHealth.data?.manifest_cache_stale,
       backendHealth.error,
+      !!backendHealth.data,
       isWindowFocused,
       t,
       webhid.connected,
@@ -187,6 +190,23 @@ export default function OperatorPage() {
     }
     return "border-rose-300/60 bg-rose-500/20 text-rose-100";
   };
+
+  // Pre-load the last 25 scans from the backend so history survives page refreshes.
+  useEffect(() => {
+    fetchScannerMetrics().then((records) => {
+      const items: ScanHistoryItem[] = records.slice(0, 25).map((r) => ({
+        id: `${r.timestamp}-${r.ticket_number}`,
+        ticket: r.ticket_number,
+        status: r.status as ScanResponse["status"],
+        reason: null,
+        errorCode: r.error_code,
+        wixStatus: r.wix_status,
+        timestamp: Math.round(r.timestamp * 1000),
+        responseTimeMs: r.response_time_ms,
+      }));
+      setScanHistory(items);
+    }).catch(() => { /* silently ignore if metrics unavailable */ });
+  }, []);
 
   // When the session expires, return to bootstrap-idle.
   useEffect(() => {
@@ -252,11 +272,11 @@ export default function OperatorPage() {
   }, [t, webhid.connected, webhid.supported]);
 
   useEffect(() => {
+    if (backendHealth.error) {
+      toast.error(t("operator.backendDegraded"));
+    }
     if (!backendHealth.data) {
       return;
-    }
-    if (backendHealth.data.backend_status === "red") {
-      toast.error(t("operator.backendDegraded"));
     }
     if (backendHealth.data.manifest_cache_stale && enrolled) {
       if (manifestStaleToastIdRef.current === null) {

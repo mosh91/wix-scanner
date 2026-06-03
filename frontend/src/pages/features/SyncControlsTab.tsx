@@ -6,7 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpModal } from "@/components/HelpModal";
 import { useHelpModal } from "@/hooks/useHelpModal";
-import { getSyncControl, upsertSyncControl, type WixSyncControlRecord } from "@/services/scannerApi";
+import {
+  getManifestStatus,
+  getSyncControl,
+  syncManifest,
+  upsertSyncControl,
+  type ManifestSyncResponse,
+  type WixSyncControlRecord,
+} from "@/services/scannerApi";
 
 export default function SyncControlsTab() {
   const { t } = useTranslation();
@@ -16,21 +23,40 @@ export default function SyncControlsTab() {
   const [syncControlEnabled, setSyncControlEnabled] = useState(true);
   const [syncControlInterval, setSyncControlInterval] = useState(60);
   const [syncControlStatus, setSyncControlStatus] = useState<WixSyncControlRecord | null>(null);
+  const [manifestStatus, setManifestStatus] = useState<ManifestSyncResponse | null>(null);
   const [loadingSyncControl, setLoadingSyncControl] = useState(false);
+  const [syncingManifest, setSyncingManifest] = useState(false);
 
   const loadSyncControls = useCallback(async (eventId: string) => {
     setLoadingSyncControl(true);
     try {
-      const control = await getSyncControl(eventId);
+      const [control, manifest] = await Promise.all([
+        getSyncControl(eventId),
+        getManifestStatus(eventId).catch(() => null),
+      ]);
       setSyncControlStatus(control);
       setSyncControlEnabled(control.enabled);
       setSyncControlInterval(control.interval_seconds);
+      setManifestStatus(manifest);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("home.syncControls.loadError"));
     } finally {
       setLoadingSyncControl(false);
     }
   }, [t]);
+
+  const handleSyncNow = async () => {
+    setSyncingManifest(true);
+    try {
+      const result = await syncManifest(syncControlEventId);
+      setManifestStatus(result);
+      toast.success(`Sincronizado: ${result.total_tickets} tickets (${result.checked_in_tickets} ingresados)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al sincronizar el manifest");
+    } finally {
+      setSyncingManifest(false);
+    }
+  };
 
   useEffect(() => {
     void loadSyncControls(syncControlEventId);
@@ -126,6 +152,40 @@ export default function SyncControlsTab() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">{t("home.syncControls.empty")}</p>
+          )}
+
+          {manifestStatus && (
+            <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Cache local de tickets</span>
+                <Button size="sm" variant="outline" onClick={() => void handleSyncNow()} disabled={syncingManifest}>
+                  {syncingManifest ? "Sincronizando..." : "Sincronizar ahora"}
+                </Button>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-md bg-muted/50 p-3 text-center">
+                  <div className="text-2xl font-bold">{manifestStatus.total_tickets}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Total</div>
+                </div>
+                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-3 text-center">
+                  <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{manifestStatus.checked_in_tickets}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Ingresados</div>
+                </div>
+                <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+                    {manifestStatus.total_tickets - manifestStatus.checked_in_tickets}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Restantes</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className={`inline-block size-2 rounded-full ${manifestStatus.stale ? "bg-amber-500" : "bg-emerald-500"}`} />
+                {manifestStatus.stale ? "Cache desactualizada" : "Cache vigente"}
+                {manifestStatus.last_known_sync_ts > 0 && (
+                  <span>· Ultima sync: {new Date(manifestStatus.last_known_sync_ts * 1000).toLocaleTimeString()}</span>
+                )}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
