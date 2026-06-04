@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 type HIDScannerOptions = {
+  disabled?: boolean;
   terminatorKey?: string;
   debounceMs?: number;
   maxPayloadLength?: number;
@@ -12,6 +13,7 @@ type HIDScannerOptions = {
 const DEFAULT_ALLOWED_PATTERN = /^[\x20-\x7E]+$/;
 
 export function useHIDScanner({
+  disabled = false,
   terminatorKey = "Enter",
   debounceMs = 50,
   maxPayloadLength = 512,
@@ -23,6 +25,8 @@ export function useHIDScanner({
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (disabled) return;
+
     const flush = () => {
       if (debounceRef.current) {
         window.clearTimeout(debounceRef.current);
@@ -80,5 +84,5 @@ export function useHIDScanner({
         window.clearTimeout(debounceRef.current);
       }
     };
-  }, [allowedPattern, debounceMs, maxPayloadLength, onScan, onValidationError, terminatorKey]);
+  }, [allowedPattern, debounceMs, disabled, maxPayloadLength, onScan, onValidationError, terminatorKey]);
 }

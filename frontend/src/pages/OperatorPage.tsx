@@ -22,6 +22,7 @@ import { useBackendScannerHealth } from "@/hooks/useBackendScannerHealth";
 import { useHIDScanner } from "@/hooks/useHIDScanner";
 import { useKioskSession } from "@/hooks/useKioskSession";
 import { useWebHIDScannerHealth } from "@/hooks/useWebHIDScannerHealth";
+import { useWebSerialScanner } from "@/hooks/useWebSerialScanner";
 import {
   clearBootstrapSession,
   fetchScannerMetrics,
@@ -52,6 +53,8 @@ type ScanHistoryItem = {
 };
 
 type HealthSeverity = "good" | "warn" | "bad";
+
+const SCANNER_MODE = (import.meta.env.VITE_SCANNER_MODE ?? "hid") as "hid" | "serial";
 
 const KIOSK_RESET_MS = {
   success: 2500,
@@ -96,7 +99,27 @@ export default function OperatorPage() {
   const focusLostToastIdRef = useRef<string | number | null>(null);
   const manifestStaleToastIdRef = useRef<string | number | null>(null);
 
+  // processScan is defined further below; this ref lets the serial hook call it
+  // without being declared after it (hooks must stay in a fixed order).
+  const processScanRef = useRef<((payload: string) => void) | null>(null);
+
   const webhid = useWebHIDScannerHealth();
+  const serial = useWebSerialScanner({
+    disabled: SCANNER_MODE !== "serial",
+    onScan: (payload) => { processScanRef.current?.(payload); },
+    onValidationError: (reason) => {
+      if (reason === "max_length") {
+        toast.error(t("operator.validation.maxLength"));
+      } else {
+        toast.error(t("operator.validation.invalidCharset"));
+      }
+    },
+    maxPayloadLength: 512,
+  });
+
+  // Active scanner health: serial when mode=serial, otherwise WebHID.
+  const activeScanner = SCANNER_MODE === "serial" ? serial : webhid;
+
   const backendHealth = useBackendScannerHealth(session?.activeEventId);
 
   const healthItems = useMemo(
@@ -110,22 +133,22 @@ export default function OperatorPage() {
           key: "usb",
           label: t("operator.health.usb"),
           icon: Usb,
-          value: webhid.connected ? "connected" : "disconnected",
-          severity: (webhid.connected ? "good" : "bad") as HealthSeverity,
-          problem: webhid.connected ? null : t("operator.scannerDisconnected"),
+          value: activeScanner.connected ? "connected" : "disconnected",
+          severity: (activeScanner.connected ? "good" : "bad") as HealthSeverity,
+          problem: activeScanner.connected ? null : t("operator.scannerDisconnected"),
         },
         {
           key: "device",
           label: t("operator.health.device"),
           icon: HeartPulse,
-          value: webhid.health,
+          value: activeScanner.health,
           severity: (
-            webhid.health === "responding" ? "good" : webhid.health === "unresponsive" ? "bad" : "warn"
+            activeScanner.health === "responding" ? "good" : activeScanner.health === "unresponsive" ? "bad" : "warn"
           ) as HealthSeverity,
           problem:
-            webhid.health === "responding"
+            activeScanner.health === "responding"
               ? null
-              : webhid.health === "unresponsive"
+              : activeScanner.health === "unresponsive"
                 ? "El scanner esta conectado pero no responde a los chequeos."
                 : "No hay suficientes datos para confirmar la salud del dispositivo.",
         },
@@ -176,8 +199,8 @@ export default function OperatorPage() {
       !!backendHealth.data,
       isWindowFocused,
       t,
-      webhid.connected,
-      webhid.health,
+      activeScanner.connected,
+      activeScanner.health,
     ],
   );
 
@@ -262,14 +285,19 @@ export default function OperatorPage() {
   }, [t]);
 
   useEffect(() => {
-    if (!webhid.supported) {
-      toast.warning(t("operator.webhidUnavailable"));
+    if (!activeScanner.supported) {
+      toast.warning(
+        SCANNER_MODE === "serial"
+          ? t("operator.serialUnavailable")
+          : t("operator.webhidUnavailable"),
+      );
       return;
     }
-    if (!webhid.connected) {
+    if (!activeScanner.connected && SCANNER_MODE !== "serial") {
+      // Serial mode shows a "Connect Scanner" button instead of a toast.
       toast.warning(t("operator.scannerDisconnected"));
     }
-  }, [t, webhid.connected, webhid.supported]);
+  }, [t, activeScanner.connected, activeScanner.supported]);
 
   useEffect(() => {
     if (backendHealth.error) {
@@ -336,11 +364,11 @@ export default function OperatorPage() {
     try {
       const scanEventId = generateScanEventId();
       const result = await submitScan(payload, {
-        source: "hid",
+        source: SCANNER_MODE,
         sessionId,
         operatorId,
         scanEventId,
-        scannerStatus: webhid.connected ? "connected" : "disconnected",
+        scannerStatus: activeScanner.connected ? "connected" : "disconnected",
         activeEventId: session?.activeEventId,
         activeStationId: session?.activeStationId,
       });
@@ -395,7 +423,12 @@ export default function OperatorPage() {
     void processTicketScan(payload);
   };
 
+  // Keep the ref in sync so the serial hook's onScan wrapper always calls the
+  // current version of processScan (captures up-to-date enrolled state, etc.).
+  processScanRef.current = processScan;
+
   useHIDScanner({
+    disabled: SCANNER_MODE !== "hid",
     onScan: (payload) => {
       processScan(payload);
     },
@@ -605,22 +638,32 @@ export default function OperatorPage() {
                   return compactStatus;
                 })}
                 
-                {/* USB Device Info - spans 4 columns next to WebSocket */}
+                {/* Scanner Device Info - spans 4 columns next to WebSocket */}
                 <div className="col-span-2 rounded-lg border border-white/20 bg-white/5 p-3 md:col-span-4">
                   <p className="flex items-center gap-2 text-white/85">
                     <Usb className="size-4" />
-                    {webhid.deviceLabel}
+                    {activeScanner.deviceLabel}
                   </p>
                   <p className="mt-1 text-xs text-white/70">
-                    {t("operator.health.remembered")}: {webhid.rememberedDeviceCount}
+                    {t("operator.health.remembered")}: {activeScanner.rememberedDeviceCount}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => void webhid.requestPermission()}
-                    className="mt-2 rounded-full border border-white/40 px-3 py-1 text-xs uppercase tracking-wide hover:bg-white/10"
-                  >
-                    {t("operator.grantPermission")}
-                  </button>
+                  {SCANNER_MODE === "serial" && serial.needsPermission ? (
+                    <button
+                      type="button"
+                      onClick={() => void serial.requestPermission()}
+                      className="mt-2 rounded-full border border-white/40 bg-blue-500/20 px-3 py-1 text-xs uppercase tracking-wide hover:bg-blue-500/40"
+                    >
+                      {t("operator.connectScanner")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void activeScanner.requestPermission()}
+                      className="mt-2 rounded-full border border-white/40 px-3 py-1 text-xs uppercase tracking-wide hover:bg-white/10"
+                    >
+                      {t("operator.grantPermission")}
+                    </button>
+                  )}
                 </div>
               </div>
             </CardContent>
