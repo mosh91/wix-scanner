@@ -328,6 +328,7 @@ export default function OperatorPage() {
   };
 
   const processTicketScan = async (payload: string) => {
+    const scanStartTime = Date.now();
     const overlayTimer = window.setTimeout(() => {
       setIsProcessing(true);
     }, 300);
@@ -344,6 +345,8 @@ export default function OperatorPage() {
         activeStationId: session?.activeStationId,
       });
 
+      const elapsedMs = Date.now() - scanStartTime;
+
       const item: ScanHistoryItem = {
         id: result.idempotency_key,
         ticket: result.ticket_number,
@@ -352,7 +355,7 @@ export default function OperatorPage() {
         errorCode: result.error_code,
         wixStatus: result.wix_status,
         timestamp: Date.now(),
-        responseTimeMs: result.response_time_ms,
+        responseTimeMs: elapsedMs,
       };
 
       setScanHistory((prev) => [item, ...prev].slice(0, 25));

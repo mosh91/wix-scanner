@@ -797,12 +797,12 @@
       "remembered": "Remembered devices"
     },
     "metrics": {
-      "lastMs": "Last latency",
+      "lastMs": "Last total time",
       "min": "Min",
       "max": "Max",
       "avg": "Average",
       "successRate": "Success rate",
-      "historySeries": "Recent latency series (ms)",
+      "historySeries": "Recent total time series (ms)",
       "noHistory": "No data yet"
     },
     "detail": {

@@ -797,12 +797,12 @@
       "remembered": "Dispositivos recordados"
     },
     "metrics": {
-      "lastMs": "Ultima latencia",
+      "lastMs": "Último tiempo total",
       "min": "Minimo",
       "max": "Maximo",
       "avg": "Promedio",
       "successRate": "Tasa de exito",
-      "historySeries": "Serie reciente de latencias (ms)",
+      "historySeries": "Serie reciente de tiempos totales (ms)",
       "noHistory": "Sin datos todavia"
     },
     "detail": {

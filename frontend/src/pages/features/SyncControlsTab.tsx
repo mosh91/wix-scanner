@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpModal } from "@/components/HelpModal";
 import { useHelpModal } from "@/hooks/useHelpModal";
+import { useAdminData } from "@/context/AdminDataContext";
 import {
   getManifestStatus,
   getSyncControl,
@@ -18,6 +19,7 @@ import {
 export default function SyncControlsTab() {
   const { t } = useTranslation();
   const help = useHelpModal();
+  const { verifiedEvents } = useAdminData();
 
   const [syncControlEventId, setSyncControlEventId] = useState("event-demo-01");
   const [syncControlEnabled, setSyncControlEnabled] = useState(true);
@@ -59,8 +61,16 @@ export default function SyncControlsTab() {
   };
 
   useEffect(() => {
-    void loadSyncControls(syncControlEventId);
-  }, [loadSyncControls, syncControlEventId]);
+    if (verifiedEvents.length > 0) {
+      const isValidSelection = verifiedEvents.some((e) => e.wix_event_id === syncControlEventId);
+      const eventId = isValidSelection ? syncControlEventId : verifiedEvents[0].wix_event_id;
+      if (eventId !== syncControlEventId) {
+        setSyncControlEventId(eventId);
+      } else {
+        void loadSyncControls(eventId);
+      }
+    }
+  }, [loadSyncControls, syncControlEventId, verifiedEvents]);
 
   const handleSaveSyncControls = async () => {
     try {
@@ -91,12 +101,22 @@ export default function SyncControlsTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
-            <input
+            <select
               className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               value={syncControlEventId}
               onChange={(e) => setSyncControlEventId(e.target.value)}
-              placeholder={t("home.syncControls.eventPlaceholder")}
-            />
+              disabled={verifiedEvents.length === 0}
+            >
+              {verifiedEvents.length === 0 ? (
+                <option value="">{t("home.readiness.noEvents")}</option>
+              ) : (
+                verifiedEvents.map((event) => (
+                  <option key={event.wix_event_id} value={event.wix_event_id}>
+                    {event.wix_event_name ? `${event.wix_event_name} (${event.wix_event_id})` : event.wix_event_id}
+                  </option>
+                ))
+              )}
+            </select>
             <select
               className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               value={syncControlInterval}
